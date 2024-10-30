@@ -1,9 +1,9 @@
-import mysql.connector  # mysql.connector 모듈을 불러옵니다.
+import mysql.connector
 import json
 
 # MySQL 데이터베이스에 연결
 db = mysql.connector.connect(
-    host="mysql",  # Docker Compose에서 정의한 MySQL 서비스 이름
+    host="localhost",  # localhost로 변경
     user="trivy_user",
     password="trivy_password",
     database="trivy_db"
