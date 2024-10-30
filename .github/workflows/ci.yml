@@ -7,4 +7,3 @@
     port: 22
     script: |
       echo "SSH connection successful"
-
