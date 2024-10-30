@@ -1,5 +1,3 @@
-name: CI to Docker Hub and Remote Server Deployment
-
 on:
   push:
     branches: [main]
@@ -74,9 +72,7 @@ jobs:
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       run: |
-        cat <<EOF > private_key
-$SSH_PRIVATE_KEY
-EOF
+        echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json root@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
         rm private_key
@@ -84,16 +80,15 @@ EOF
     - name: Restart Docker on Remote Server
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       run: |
-        cat <<EOF > private_key
-$SSH_PRIVATE_KEY
-EOF
+        echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
-        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no root@${{ secrets.REMOTE_HOST }} << 'SSH'
-          docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
-          docker stop my-app || true
-          docker rm my-app || true
-          docker run -d --name my-app -p 80:80 ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
-SSH
+        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no root@${{ secrets.REMOTE_HOST }} "
+          docker pull $DOCKER_USERNAME/my-php-app:latest &&
+          docker stop my-app || true &&
+          docker rm my-app || true &&
+          docker run -d --name my-app -p 80:80 $DOCKER_USERNAME/my-php-app:latest
+        "
         rm private_key
 
