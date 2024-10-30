@@ -59,6 +59,8 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: ${{ secrets.REMOTE_SSH_PORT }}
         script: |
+          export SUDO_ASKPASS=/bin/true
+          sudo -k  # clear any existing cached credentials
           sudo docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
           sudo docker stop my-app || true
           sudo docker rm my-app || true
