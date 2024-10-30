@@ -1,4 +1,4 @@
-name: CI with Docker Deployment and Trivy Scan
+name: CI to Docker Hub and Remote Server Deployment
 
 on:
   push:
@@ -12,21 +12,26 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.qorwlsdk1995 }}
+        password: ${{ secrets.9474alswn! }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v2
       with:
         context: ./webserver
         file: ./webserver/Dockerfile
-        tags: "my-php-app:latest"
         push: true
-        load: true # Necessary for local testing if needed
+        tags: ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'my-php-app:latest'
+        image-ref: '${{ secrets.DOCKER_USERNAME }}/my-php-app:latest'
         format: 'table'
         output: 'trivy-report.txt'
 
@@ -36,17 +41,16 @@ jobs:
         name: trivy-report
         path: trivy-report.txt
 
-    - name: SSH and Restart Docker on Remote Server
+    - name: Deploy to Remote Server
       uses: appleboy/ssh-action@master
       with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
+        host: ${{ secrets.114.207.112.135 }}
+        username: ${{ secrets.ubuntu }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
         script: |
-          docker pull my-php-app:latest
+          docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
           docker stop my-app || true
           docker rm my-app || true
-          docker run -d --name my-app -p 80:80 my-php-app:latest
-          sudo systemctl restart docker
+          docker run -d --name my-app -p 80:80 ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
 
