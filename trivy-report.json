@@ -1,6 +1,6 @@
 {
   "SchemaVersion": 2,
-  "CreatedAt": "2024-10-30T13:28:34.812089545Z",
+  "CreatedAt": "2024-10-30T15:36:05.044802611Z",
   "ArtifactName": "qorwlsdk1995/my-php-app:latest",
   "ArtifactType": "container_image",
   "Metadata": {
@@ -8,7 +8,7 @@
       "Family": "debian",
       "Name": "12.7"
     },
-    "ImageID": "sha256:171c5e4b81295d29bd8ef8f0b0c11b61010e9f35146fe9be05bab4be3d38c35b",
+    "ImageID": "sha256:dd2bd6c8094379e313a4a0d695faf409fc35eaaf8ce4511cb8745b8488d86972",
     "DiffIDs": [
       "sha256:98b5f35ea9d3eca6ed1881b5fe5d1e02024e1450822879e4c13bb48c9386d0ad",
       "sha256:28ea8928a7297f35a174d25bb28f44013275f46448641c429b5ef4890e25854a",
@@ -21,20 +21,24 @@
       "sha256:04f1b92ce5a142e21f4cb3f812e52a0b9ae97c2146170f3f12746912daf7c2a9",
       "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
       "sha256:a7792c7a853670fc5b773b84f862a22b146578a8ba7c0b9bc6dec8405c39686e",
-      "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6",
-      "sha256:0cf6fd192474bf552e16ff4cf1ecb8dba01d397af6817be89af00263a566f22f",
-      "sha256:9933804cbebd4e0905eeb8186d01a417e303cc44eb5c45777a84144d69d73bbf",
-      "sha256:c4714a3d9a1306df818deff3031a7c8053c74b26315d43456dc109f3cbd15a6c"
+      "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b",
+      "sha256:879334944cf7050bfdf6848b370196168dd9a5c4154a3a459ae9243ac7e42972",
+      "sha256:2f5df07ab94e83afd39ae68f1a4f4402972d04574445b802465391fed8bf13d2",
+      "sha256:afe64b22bf95b5fe2f2389f3a101c1e265b7015bcfa05663ac2d421bad4ac148",
+      "sha256:3ac68bac8ddb2621e708b44c8b3650fca2a2aeb5112d2e996ef671d99b97313a",
+      "sha256:c9644eec0bb40cc0568f805da7aadb5f80f1cce52740dc76d6f9286f97ab703c",
+      "sha256:cb61c5e2f56bb7b8fe56dd6c18ec80bf4287cf2e68d9d34155108eb563b6d3f0",
+      "sha256:1dc8347e09675a0122322234cffe7d8f3e85ee53f98de09fa095b5aed8f009eb"
     ],
     "RepoTags": [
       "qorwlsdk1995/my-php-app:latest"
     ],
     "RepoDigests": [
-      "qorwlsdk1995/my-php-app@sha256:7d3a8a0a80f28ac92646ab2d186e8b36bca55ccc56f6568c86916b5fe715f5d7"
+      "qorwlsdk1995/my-php-app@sha256:16d9d20bb35a7e951bd1ca8696781a1d5451da30c5753c43cca393b2dfdb7be7"
     ],
     "ImageConfig": {
       "architecture": "amd64",
-      "created": "2024-10-30T13:28:20.488597066Z",
+      "created": "2024-10-30T15:35:40.997355726Z",
       "history": [
         {
           "created": "2024-10-17T00:20:29.770925881Z",
@@ -174,34 +178,54 @@
           "empty_layer": true
         },
         {
-          "created": "2024-10-30T13:28:20.453538662Z",
+          "created": "2024-10-30T15:35:36.538783147Z",
           "created_by": "RUN /bin/sh -c apt-get update \u0026\u0026 apt-get install -y nginx # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2024-10-30T13:28:20.467338091Z",
+          "created": "2024-10-30T15:35:36.554015146Z",
           "created_by": "COPY default.conf /etc/nginx/sites-available/default # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2024-10-30T13:28:20.477493358Z",
+          "created": "2024-10-30T15:35:36.566089372Z",
           "created_by": "COPY www.conf /usr/local/etc/php-fpm.d/www.conf # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2024-10-30T13:28:20.488597066Z",
+          "created": "2024-10-30T15:35:36.578178971Z",
           "created_by": "COPY src/ /var/www/html/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2024-10-30T13:28:20.488597066Z",
+          "created": "2024-10-30T15:35:38.120369976Z",
+          "created_by": "RUN /bin/sh -c apt-get update \u0026\u0026 apt-get install -y wget # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2024-10-30T15:35:40.338573373Z",
+          "created_by": "RUN /bin/sh -c wget https://github.com/aquasecurity/trivy/releases/download/v0.29.2/trivy_0.29.2_Linux-64bit.deb # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2024-10-30T15:35:40.90255726Z",
+          "created_by": "RUN /bin/sh -c dpkg -i trivy_0.29.2_Linux-64bit.deb # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2024-10-30T15:35:40.997355726Z",
+          "created_by": "RUN /bin/sh -c mkdir -p /var/www/.cache \u0026\u0026 chmod -R 777 /var/www/.cache # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2024-10-30T15:35:40.997355726Z",
           "created_by": "EXPOSE map[80/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2024-10-30T13:28:20.488597066Z",
-          "created_by": "CMD [\"sh\" \"-c\" \"service php8.0-fpm start \u0026\u0026 nginx -g 'daemon off;'\"]",
+          "created": "2024-10-30T15:35:40.997355726Z",
+          "created_by": "CMD [\"sh\" \"-c\" \"php-fpm -D \u0026\u0026 nginx -g 'daemon off;'\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         }
@@ -221,17 +245,21 @@
           "sha256:04f1b92ce5a142e21f4cb3f812e52a0b9ae97c2146170f3f12746912daf7c2a9",
           "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
           "sha256:a7792c7a853670fc5b773b84f862a22b146578a8ba7c0b9bc6dec8405c39686e",
-          "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6",
-          "sha256:0cf6fd192474bf552e16ff4cf1ecb8dba01d397af6817be89af00263a566f22f",
-          "sha256:9933804cbebd4e0905eeb8186d01a417e303cc44eb5c45777a84144d69d73bbf",
-          "sha256:c4714a3d9a1306df818deff3031a7c8053c74b26315d43456dc109f3cbd15a6c"
+          "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b",
+          "sha256:879334944cf7050bfdf6848b370196168dd9a5c4154a3a459ae9243ac7e42972",
+          "sha256:2f5df07ab94e83afd39ae68f1a4f4402972d04574445b802465391fed8bf13d2",
+          "sha256:afe64b22bf95b5fe2f2389f3a101c1e265b7015bcfa05663ac2d421bad4ac148",
+          "sha256:3ac68bac8ddb2621e708b44c8b3650fca2a2aeb5112d2e996ef671d99b97313a",
+          "sha256:c9644eec0bb40cc0568f805da7aadb5f80f1cce52740dc76d6f9286f97ab703c",
+          "sha256:cb61c5e2f56bb7b8fe56dd6c18ec80bf4287cf2e68d9d34155108eb563b6d3f0",
+          "sha256:1dc8347e09675a0122322234cffe7d8f3e85ee53f98de09fa095b5aed8f009eb"
         ]
       },
       "config": {
         "Cmd": [
           "sh",
           "-c",
-          "service php8.0-fpm start \u0026\u0026 nginx -g 'daemon off;'"
+          "php-fpm -D \u0026\u0026 nginx -g 'daemon off;'"
         ],
         "Entrypoint": [
           "docker-php-entrypoint"
@@ -5205,13 +5233,13 @@
           "PkgName": "libelf1",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/libelf1@0.188-2.1?arch=amd64\u0026distro=debian-12.7",
-            "UID": "c4345a3c6532961d"
+            "UID": "a795ba7872e368ae"
           },
           "InstalledVersion": "0.188-2.1",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-25260",
@@ -10101,13 +10129,13 @@
           "PkgName": "libxtables12",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/libxtables12@1.8.9-2?arch=amd64\u0026distro=debian-12.7",
-            "UID": "c7fdecdd53702acd"
+            "UID": "f6ad6c1d14f6f9d3"
           },
           "InstalledVersion": "1.8.9-2",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2012-2663",
@@ -52544,13 +52572,13 @@
           "PkgName": "nginx",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx@1.22.1-9?arch=amd64\u0026distro=debian-12.7",
-            "UID": "3383ce3b2a9be58f"
+            "UID": "40c90e45589dd3b2"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-7347",
@@ -52609,13 +52637,13 @@
           "PkgName": "nginx",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx@1.22.1-9?arch=amd64\u0026distro=debian-12.7",
-            "UID": "3383ce3b2a9be58f"
+            "UID": "40c90e45589dd3b2"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2009-4487",
@@ -52660,13 +52688,13 @@
           "PkgName": "nginx",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx@1.22.1-9?arch=amd64\u0026distro=debian-12.7",
-            "UID": "3383ce3b2a9be58f"
+            "UID": "40c90e45589dd3b2"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "will_not_fix",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2013-0337",
@@ -52707,13 +52735,13 @@
           "PkgName": "nginx",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx@1.22.1-9?arch=amd64\u0026distro=debian-12.7",
-            "UID": "3383ce3b2a9be58f"
+            "UID": "40c90e45589dd3b2"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-44487",
@@ -53011,13 +53039,13 @@
           "PkgName": "nginx-common",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx-common@1.22.1-9?arch=all\u0026distro=debian-12.7",
-            "UID": "676a4373f1265e14"
+            "UID": "86d34bd6cc1357ae"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-7347",
@@ -53076,13 +53104,13 @@
           "PkgName": "nginx-common",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx-common@1.22.1-9?arch=all\u0026distro=debian-12.7",
-            "UID": "676a4373f1265e14"
+            "UID": "86d34bd6cc1357ae"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2009-4487",
@@ -53127,13 +53155,13 @@
           "PkgName": "nginx-common",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx-common@1.22.1-9?arch=all\u0026distro=debian-12.7",
-            "UID": "676a4373f1265e14"
+            "UID": "86d34bd6cc1357ae"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "will_not_fix",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2013-0337",
@@ -53174,13 +53202,13 @@
           "PkgName": "nginx-common",
           "PkgIdentifier": {
             "PURL": "pkg:deb/debian/nginx-common@1.22.1-9?arch=all\u0026distro=debian-12.7",
-            "UID": "676a4373f1265e14"
+            "UID": "86d34bd6cc1357ae"
           },
           "InstalledVersion": "1.22.1-9",
           "Status": "affected",
           "Layer": {
-            "Digest": "sha256:ae915dda24c173aa9c56773fad9e2a14dd74431919b39185f58a5e5ca1ce4ec0",
-            "DiffID": "sha256:7014d63637f68559204d15af0ec8dfac232d396e34544ca17e2c9631431b90f6"
+            "Digest": "sha256:91438389fd63a69fac276b80da083b8548e6c661e8e5a2a96b0d0be880cd54a4",
+            "DiffID": "sha256:819acef2f2347a91f8c66e79c1514248e62b93333a42c5657dd4cb324dd96d9b"
           },
           "SeveritySource": "debian",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-44487",
@@ -54899,6 +54927,128 @@
           ],
           "PublishedDate": "2022-02-21T19:15:08.393Z",
           "LastModifiedDate": "2024-01-07T09:15:08.713Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-38428",
+          "PkgID": "wget@1.21.3-1+b2",
+          "PkgName": "wget",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/wget@1.21.3-1%2Bb2?arch=amd64\u0026distro=debian-12.7",
+            "UID": "526cbcbb3514d57f"
+          },
+          "InstalledVersion": "1.21.3-1+b2",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:93a7f950b01366eb9c66c514372f3da0fbb5e9f6c6988d7504d9187e88c76a44",
+            "DiffID": "sha256:3ac68bac8ddb2621e708b44c8b3650fca2a2aeb5112d2e996ef671d99b97313a"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-38428",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "wget: Misinterpretation of input may lead to improper behavior",
+          "Description": "url.c in GNU Wget through 1.24.5 mishandles semicolons in the userinfo subcomponent of a URI, and thus there may be insecure behavior in which data that was supposed to be in the userinfo subcomponent is misinterpreted to be part of the host subcomponent.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-436"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "amazon": 2,
+            "cbl-mariner": 4,
+            "nvd": 4,
+            "oracle-oval": 2,
+            "photon": 4,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+              "V3Score": 9.1
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+              "V3Score": 5.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2024:6192",
+            "https://access.redhat.com/security/cve/CVE-2024-38428",
+            "https://bugzilla.redhat.com/2292836",
+            "https://errata.almalinux.org/9/ALSA-2024-6192.html",
+            "https://git.savannah.gnu.org/cgit/wget.git/commit/?id=ed0c7c7e0e8f7298352646b2fd6e06a11e242ace",
+            "https://linux.oracle.com/cve/CVE-2024-38428.html",
+            "https://linux.oracle.com/errata/ELSA-2024-6192.html",
+            "https://lists.gnu.org/archive/html/bug-wget/2024-06/msg00005.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-38428",
+            "https://ubuntu.com/security/notices/USN-6852-1",
+            "https://ubuntu.com/security/notices/USN-6852-2",
+            "https://www.cve.org/CVERecord?id=CVE-2024-38428"
+          ],
+          "PublishedDate": "2024-06-16T03:15:08.43Z",
+          "LastModifiedDate": "2024-10-28T21:35:09.643Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2021-31879",
+          "PkgID": "wget@1.21.3-1+b2",
+          "PkgName": "wget",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/wget@1.21.3-1%2Bb2?arch=amd64\u0026distro=debian-12.7",
+            "UID": "526cbcbb3514d57f"
+          },
+          "InstalledVersion": "1.21.3-1+b2",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:93a7f950b01366eb9c66c514372f3da0fbb5e9f6c6988d7504d9187e88c76a44",
+            "DiffID": "sha256:3ac68bac8ddb2621e708b44c8b3650fca2a2aeb5112d2e996ef671d99b97313a"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-31879",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Title": "wget: authorization header disclosure on redirect",
+          "Description": "GNU Wget through 1.21.1 does not omit the Authorization header upon a redirect to a different origin, a related issue to CVE-2018-1000007.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-601"
+          ],
+          "VendorSeverity": {
+            "amazon": 2,
+            "cbl-mariner": 2,
+            "nvd": 2,
+            "photon": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V2Vector": "AV:N/AC:M/Au:N/C:P/I:P/A:N",
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V2Score": 5.8,
+              "V3Score": 6.1
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
+              "V3Score": 6.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2021-31879",
+            "https://mail.gnu.org/archive/html/bug-wget/2021-02/msg00002.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2021-31879",
+            "https://savannah.gnu.org/bugs/?56909",
+            "https://security.netapp.com/advisory/ntap-20210618-0002/",
+            "https://www.cve.org/CVERecord?id=CVE-2021-31879"
+          ],
+          "PublishedDate": "2021-04-29T05:15:08.707Z",
+          "LastModifiedDate": "2022-05-13T20:52:24.793Z"
         },
         {
           "VulnerabilityID": "CVE-2023-45853",

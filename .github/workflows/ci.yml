@@ -65,6 +65,6 @@ jobs:
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json ubuntu@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
         ssh -i private_key -p 2002 -o StrictHostKeyChecking=no ubuntu@${{ secrets.REMOTE_HOST }} "
-        python insert_trivy_to_mysql.py
+        python3 insert_trivy_to_mysql.py
         "
         rm private_key
