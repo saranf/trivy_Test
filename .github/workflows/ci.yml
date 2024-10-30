@@ -1,56 +1,10 @@
-name: CI to Docker Hub and Remote Server Deployment
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v2
-      with:
-        context: ./webserver
-        file: ./webserver/Dockerfile
-        push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: '${{ secrets.DOCKER_USERNAME }}/my-php-app:latest'
-        format: 'json'                # JSON 형식으로 스캔 결과 저장
-        output: 'trivy-report.json'   # JSON 파일명 지정
-
-    - name: Upload Trivy JSON scan results
-      uses: actions/upload-artifact@v3
-      with:
-        name: trivy-report-json
-        path: trivy-report.json       # JSON 형식의 스캔 결과 파일 업로드
-
-    - name: Deploy to Remote Server
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.REMOTE_HOST }}
-        username: ${{ secrets.REMOTE_USERNAME }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: 22
-        script: |
-          sudo docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
-          sudo docker stop my-app || true
-          sudo docker rm my-app || true
-          sudo docker run -d --name my-app -p 80:80 ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
+- name: Test SSH connection
+  uses: appleboy/ssh-action@master
+  with:
+    host: ${{ secrets.REMOTE_HOST }}
+    username: ${{ secrets.REMOTE_USERNAME }}
+    key: ${{ secrets.SSH_PRIVATE_KEY }}
+    port: 22
+    script: |
+      echo "SSH connection successful"
 
