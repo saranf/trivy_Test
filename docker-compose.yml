@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./webserver/default.conf:/etc/nginx/conf.d/default.conf
+      - ./webserver/src:/var/www/html
+    depends_on:
+      - webserver
+    networks:
+      - app-network
+
+  webserver:
+    build:
+      context: ./webserver
+      dockerfile: dockerfile
+    expose:
+      - "9000"
+    networks:
+      - app-network
+
+  mysql:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: trivy_db
+      MYSQL_USER: trivy_user
+      MYSQL_PASSWORD: trivy_password
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
