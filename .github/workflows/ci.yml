@@ -76,6 +76,6 @@ jobs:
       run: |
         echo "$SSH_PRIVATE_KEY" > private_key
         chmod 600 private_key
-        scp -i private_key -o StrictHostKeyChecking=no trivy-report.json root@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
+        scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json root@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
         rm private_key
 
