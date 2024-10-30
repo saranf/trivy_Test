@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Download CSV</title>
+</head>
+<body>
+    <button onclick="downloadCSV()">Download Trivy Report as CSV</button>
+
+    <script>
+        function downloadCSV() {
+            window.location.href = './download_csv.php';  // 파일 경로를 실제 경로로 변경
+        }
+	function startScan() {
+            const logLevel = document.getElementById('log-level').value;
+            window.location.href = `./scan_with_trivy.php?log_level=${logLevel}`;
+        }
+    </script>
+     <h1>Trivy Vulnerability Scan</h1>
+    <label for="log-level">Select Log Level:</label>
+    <select id="log-level">
+        <option value="INFO">INFO</option>
+        <option value="LOW">LOW</option>
+        <option value="MEDIUM">MEDIUM</option>
+        <option value="HIGH">HIGH</option>
+        <option value="CRITICAL">CRITICAL</option>
+    </select>
+    <button onclick="startScan()">Start Scan</button>
+</body>
+</html>
+
