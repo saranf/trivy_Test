@@ -7,6 +7,22 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: trivy_db
+          MYSQL_USER: trivy_user
+          MYSQL_PASSWORD: trivy_password
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -41,27 +57,12 @@ jobs:
         name: trivy-report-json
         path: trivy-report.json
 
-    - name: Test SSH connection
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.REMOTE_HOST }}
-        username: ${{ secrets.REMOTE_USERNAME }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.REMOTE_SSH_PORT }}
-        script: |
-          echo "SSH connection successful"
-
-    - name: Deploy to Remote Server
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.REMOTE_HOST }}
-        username: ${{ secrets.REMOTE_USERNAME }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.REMOTE_SSH_PORT }}
-        script: |
-          export SUDO_ASKPASS=/bin/true
-          sudo docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
-          sudo docker stop my-app || true
-          sudo docker rm my-app || true
-          sudo docker run -d --name my-app -p 80:80 ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
+    - name: Insert Trivy report into MySQL
+      run: |
+        python insert_trivy_to_mysql.py
+      env:
+        MYSQL_HOST: localhost
+        MYSQL_USER: trivy_user
+        MYSQL_PASSWORD: trivy_password
+        MYSQL_DB: trivy_db
 
