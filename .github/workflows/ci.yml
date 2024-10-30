@@ -84,7 +84,9 @@ jobs:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       run: |
-        echo "$SSH_PRIVATE_KEY" > private_key
+        cat <<EOF > private_key
+        $SSH_PRIVATE_KEY
+        EOF
         chmod 600 private_key
         ssh -i private_key -p 2002 -o StrictHostKeyChecking=no root@${{ secrets.REMOTE_HOST }} "
           docker pull $DOCKER_USERNAME/my-php-app:latest &&
