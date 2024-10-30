@@ -49,16 +49,13 @@ jobs:
       with:
         image-ref: '${{ secrets.DOCKER_USERNAME }}/my-php-app:latest'
         format: 'json'
-        output: 'trivy-report.json'
+        output: 'trivy-report.json'  # 프로젝트 루트에 저장됩니다.
 
     - name: Upload Trivy JSON scan results
       uses: actions/upload-artifact@v3
       with:
         name: trivy-report-json
         path: trivy-report.json
-
-    - name: Install MySQL Connector for Python
-      run: pip install mysql-connector-python
 
     - name: Insert Trivy report into MySQL
       run: |
@@ -67,5 +64,5 @@ jobs:
         MYSQL_HOST: localhost
         MYSQL_USER: trivy_user
         MYSQL_PASSWORD: trivy_password
-        MYSQL_DB: trivy_db
+        MYSQL_DB: trivy_db  
 
