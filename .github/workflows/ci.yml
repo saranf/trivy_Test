@@ -89,10 +89,8 @@ jobs:
         EOF
         chmod 600 private_key
         ssh -i private_key -p 2002 -o StrictHostKeyChecking=no ubuntu@${{ secrets.REMOTE_HOST }} "
-          docker pull $DOCKER_USERNAME/my-php-app:latest &&
-          docker stop my-app || true &&
-          docker rm my-app || true &&
-          docker run -d --name my-app -p 80:80 $DOCKER_USERNAME/my-php-app:latest
+          docker-compose down &&
+          docker-compose up --build -d
         "
         rm private_key
 

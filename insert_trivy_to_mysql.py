@@ -1,31 +1,44 @@
-import mysql.connector
 import json
+import mysql.connector
 
-# MySQL 데이터베이스에 연결
+# MySQL 연결 설정
 db = mysql.connector.connect(
-    host="localhost",  # localhost로 변경
+    host="localhost",
     user="trivy_user",
     password="trivy_password",
     database="trivy_db"
 )
 
-# JSON 파일에서 Trivy 스캔 데이터를 읽어서 데이터베이스에 삽입
 cursor = db.cursor()
-with open('trivy-report.json', 'r') as f:
+
+# 테이블 생성 (필요 시)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS trivy_vulnerabilities (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    library VARCHAR(255),
+    vulnerability VARCHAR(255),
+    severity VARCHAR(50),
+    installed_version VARCHAR(50),
+    fixed_version VARCHAR(50)
+)
+""")
+
+# JSON 파일 읽기
+with open("trivy-report.json") as f:
     data = json.load(f)
-    for vuln in data.get('Vulnerabilities', []):
-        query = """
-        INSERT INTO trivy_vulnerabilities (Library, Vulnerability, Severity, InstalledVersion, FixedVersion)
-        VALUES (%s, %s, %s, %s, %s)
-        """
-        values = (
-            vuln.get('Library', 'N/A'),
-            vuln.get('VulnerabilityID', 'N/A'),
-            vuln.get('Severity', 'N/A'),
-            vuln.get('InstalledVersion', 'N/A'),
-            vuln.get('FixedVersion', 'N/A')
-        )
-        cursor.execute(query, values)
+
+# 데이터 삽입
+for vulnerability in data["Results"][0]["Vulnerabilities"]:
+    cursor.execute("""
+    INSERT INTO trivy_vulnerabilities (library, vulnerability, severity, installed_version, fixed_version)
+    VALUES (%s, %s, %s, %s, %s)
+    """, (
+        vulnerability.get("PkgName"),
+        vulnerability.get("VulnerabilityID"),
+        vulnerability.get("Severity"),
+        vulnerability.get("InstalledVersion"),
+        vulnerability.get("FixedVersion")
+    ))
 
 db.commit()
 cursor.close()
