@@ -88,7 +88,7 @@ jobs:
         $SSH_PRIVATE_KEY
         EOF
         chmod 600 private_key
-        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no root@${{ secrets.REMOTE_HOST }} "
+        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no ubuntu@${{ secrets.REMOTE_HOST }} "
           docker pull $DOCKER_USERNAME/my-php-app:latest &&
           docker stop my-app || true &&
           docker rm my-app || true &&
