@@ -1,13 +1,12 @@
-name: CI with Trivy Scan
+name: CI with Docker Deployment and Trivy Scan
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build-and-scan:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -15,24 +14,39 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
 
-    - name: Build Docker image
+    - name: Build and push Docker image
       uses: docker/build-push-action@v2
       with:
-        context: .
-        file: Dockerfile
-        load: true  # Load the image into Docker environment instead of pushing
-        tags: my-php-app:latest
+        context: ./webserver
+        file: ./webserver/Dockerfile
+        tags: "my-php-app:latest"
+        push: true
+        load: true # Necessary for local testing if needed
 
-    - name: Trivy vulnerability scanner
+    - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'my-php-app:latest'
         format: 'table'
-        output: trivy-report.txt
+        output: 'trivy-report.txt'
 
     - name: Upload Trivy scan results
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: trivy-report
         path: trivy-report.txt
+
+    - name: SSH and Restart Docker on Remote Server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22
+        script: |
+          docker pull my-php-app:latest
+          docker stop my-app || true
+          docker rm my-app || true
+          docker run -d --name my-app -p 80:80 my-php-app:latest
+          sudo systemctl restart docker
 
