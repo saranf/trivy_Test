@@ -55,19 +55,6 @@ jobs:
         name: trivy-report-json
         path: trivy-report.json
 
-    - name: Install MySQL Connector
-      run: |
-        python3 -m pip install mysql-connector-python
-
-    - name: Insert Trivy report into MySQL
-      run: |
-        python insert_trivy_to_mysql.py
-      env:
-        MYSQL_HOST: localhost
-        MYSQL_USER: trivy_user
-        MYSQL_PASSWORD: trivy_password
-        MYSQL_DB: trivy_db
-
     - name: Upload Trivy JSON to Remote Server
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -77,4 +64,7 @@ jobs:
         EOF
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json ubuntu@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
+        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no ubuntu@${{ secrets.REMOTE_HOST }} "
+        python insert_trivy_to_mysql.py
+        "
         rm private_key

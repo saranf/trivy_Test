@@ -11,7 +11,15 @@ COPY www.conf /usr/local/etc/php-fpm.d/www.conf
 # Copy application code
 COPY src/ /var/www/html/
 
-# Expose port and start PHP and Nginx
+# Install Trivy
+RUN apt-get update && apt-get install -y wget
+RUN wget https://github.com/aquasecurity/trivy/releases/download/v0.29.2/trivy_0.29.2_Linux-64bit.deb
+RUN dpkg -i trivy_0.29.2_Linux-64bit.deb
+
+# Create cache directory and set permissions
+RUN mkdir -p /var/www/.cache && chmod -R 777 /var/www/.cache
+
+# Expose port and start PHP-FPM and Nginx
 EXPOSE 80
-CMD ["sh", "-c", "service php8.0-fpm start && nginx -g 'daemon off;'"]
+CMD ["sh", "-c", "php-fpm -D && nginx -g 'daemon off;'"]
 
