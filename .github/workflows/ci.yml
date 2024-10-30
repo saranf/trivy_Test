@@ -59,7 +59,7 @@ jobs:
 
     - name: Insert Trivy report into MySQL
       run: |
-        python ./insert_trivy_to_mysql.py
+        python /backup/rmstudio/portfolio_trivy/trivy_Test/insert_trivy_to_mysql.py
       env:
         MYSQL_HOST: localhost
         MYSQL_USER: trivy_user
