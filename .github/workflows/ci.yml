@@ -72,7 +72,9 @@ jobs:
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       run: |
-        echo ${{ secrets.SSH_PRIVATE_KEY }} > private_key
+        cat <<EOF > private_key
+        $SSH_PRIVATE_KEY
+        EOF
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json ubuntu@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
         rm private_key
