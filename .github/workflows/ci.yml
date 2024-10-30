@@ -78,19 +78,3 @@ jobs:
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json ubuntu@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
         rm private_key
-
-    - name: Restart Docker on Remote Server
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      run: |
-        cat <<EOF > private_key
-        $SSH_PRIVATE_KEY
-        EOF
-        chmod 600 private_key
-        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no ubuntu@${{ secrets.REMOTE_HOST }} "
-          docker-compose down &&
-          docker-compose up --build -d
-        "
-        rm private_key
-
