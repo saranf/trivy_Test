@@ -1,0 +1,17 @@
+# Dockerfile for Nginx + PHP 8
+FROM php:8-fpm
+
+# Install Nginx and dependencies
+RUN apt-get update && apt-get install -y nginx
+
+# Configure Nginx and PHP
+COPY default.conf /etc/nginx/sites-available/default
+COPY www.conf /usr/local/etc/php-fpm.d/www.conf
+
+# Copy application code
+COPY src/ /var/www/html/
+
+# Expose port and start PHP and Nginx
+EXPOSE 80
+CMD ["sh", "-c", "service php8.0-fpm start && nginx -g 'daemon off;'"]
+
