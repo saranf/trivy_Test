@@ -57,6 +57,9 @@ jobs:
         name: trivy-report-json
         path: trivy-report.json
 
+    - name: Install MySQL Connector for Python
+      run: pip install mysql-connector-python
+
     - name: Insert Trivy report into MySQL
       run: |
         python insert_trivy_to_mysql.py
