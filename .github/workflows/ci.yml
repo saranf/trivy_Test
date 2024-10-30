@@ -70,3 +70,12 @@ jobs:
         MYSQL_PASSWORD: trivy_password
         MYSQL_DB: trivy_db
 
+    - name: Upload Trivy JSON to Remote Server
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private_key
+        chmod 600 private_key
+        scp -i private_key -o StrictHostKeyChecking=no trivy-report.json root@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
+        rm private_key
+
