@@ -49,7 +49,7 @@ jobs:
       with:
         image-ref: '${{ secrets.DOCKER_USERNAME }}/my-php-app:latest'
         format: 'json'
-        output: 'trivy-report.json'  # 프로젝트 루트에 저장됩니다.
+        output: 'trivy-report.json'
 
     - name: Upload Trivy JSON scan results
       uses: actions/upload-artifact@v3
@@ -74,8 +74,26 @@ jobs:
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       run: |
-        echo "$SSH_PRIVATE_KEY" > private_key
+        cat <<EOF > private_key
+$SSH_PRIVATE_KEY
+EOF
         chmod 600 private_key
         scp -P 2002 -i private_key -o StrictHostKeyChecking=no trivy-report.json root@${{ secrets.REMOTE_HOST }}:/backup/rmstudio/portfolio_trivy/trivy_Test/
+        rm private_key
+
+    - name: Restart Docker on Remote Server
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        cat <<EOF > private_key
+$SSH_PRIVATE_KEY
+EOF
+        chmod 600 private_key
+        ssh -i private_key -p 2002 -o StrictHostKeyChecking=no root@${{ secrets.REMOTE_HOST }} << 'SSH'
+          docker pull ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
+          docker stop my-app || true
+          docker rm my-app || true
+          docker run -d --name my-app -p 80:80 ${{ secrets.DOCKER_USERNAME }}/my-php-app:latest
+SSH
         rm private_key
 
