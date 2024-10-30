@@ -43,7 +43,6 @@ jobs:
 
     - name: Test SSH connection
       uses: appleboy/ssh-action@master
-      known_hosts: 'github.com'
       with:
         host: ${{ secrets.REMOTE_HOST }}
         username: ${{ secrets.REMOTE_USERNAME }}
