@@ -104,7 +104,7 @@ function getSeverityIcon($severity) {
 }
 
 // MySQL 연결 (스캔 결과 저장용)
-require_once 'scan_history.php';
+require_once 'db_functions.php';
 
 // API 요청 처리
 $action = $_GET['action'] ?? '';
