@@ -21,6 +21,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Docker 소켓 마운트
       - ./webserver/www.conf:/usr/local/etc/php-fpm.d/www.conf  # PHP-FPM 설정
       - ./webserver/src:/var/www/html  # 소스 코드 공유
+    user: root  # root로 실행하여 docker 소켓 접근
     networks:
       - app-network
 
