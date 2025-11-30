@@ -12,9 +12,14 @@ COPY www.conf /usr/local/etc/php-fpm.d/www.conf
 COPY src/ /var/www/html/
 
 # Install Trivy
-RUN apt-get update && apt-get install -y wget
+RUN apt-get update && apt-get install -y wget curl
 RUN wget https://github.com/aquasecurity/trivy/releases/download/v0.29.2/trivy_0.29.2_Linux-64bit.deb
 RUN dpkg -i trivy_0.29.2_Linux-64bit.deb
+
+# Install Docker CLI
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli
 
 # Create cache directory and set permissions
 RUN mkdir -p /var/www/.cache && chmod -R 777 /var/www/.cache

@@ -24,18 +24,18 @@ function getRunningContainers() {
 function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
-    
+
     // Trivy 스캔 실행 (JSON 형식)
     $command = "trivy image --severity $safeSeverity --format json $safeTarget 2>&1";
     exec($command, $output, $result_code);
-    
+
     $jsonOutput = implode("\n", $output);
     $data = json_decode($jsonOutput, true);
-    
+
     if ($data === null) {
         return "## ❌ 스캔 오류\n\n```\n" . $jsonOutput . "\n```";
     }
-    
+
     return convertToMarkdown($data, $imageOrId);
 }
 
@@ -106,26 +106,20 @@ function getSeverityIcon($severity) {
 // API 요청 처리
 $action = $_GET['action'] ?? '';
 
-if ($action === 'list') {
-    header('Content-Type: application/json');
-    echo json_encode(getRunningContainers());
-    exit;
-}
-
 if ($action === 'scan') {
     $target = $_GET['target'] ?? '';
     $severity = $_GET['severity'] ?? 'HIGH,CRITICAL';
-    
+
     if (empty($target)) {
         echo "# ❌ 오류\n\n스캔 대상을 지정해주세요.";
         exit;
     }
-    
+
     echo scanContainer($target, $severity);
     exit;
 }
 
-// 기본: 컨테이너 목록 표시
+// 실행 중인 컨테이너 목록
 $containers = getRunningContainers();
 ?>
 <!DOCTYPE html>
@@ -158,13 +152,18 @@ $containers = getRunningContainers();
     <div class="container">
         <h1>🐳 Docker Container Trivy Scanner</h1>
         <div class="controls">
-            <label><strong>컨테이너 선택:</strong></label><br><br>
-            <select id="containerSelect">
-                <option value="">-- 컨테이너를 선택하세요 --</option>
-                <?php foreach ($containers as $c): ?>
-                <option value="<?= htmlspecialchars($c['image']) ?>">[<?= htmlspecialchars($c['name']) ?>] <?= htmlspecialchars($c['image']) ?></option>
-                <?php endforeach; ?>
-            </select>
+            <label><strong>실행 중인 컨테이너:</strong></label><br><br>
+            <?php if (empty($containers)): ?>
+                <p style="color:#e74c3c;">⚠️ 실행 중인 컨테이너가 없거나 Docker에 접근할 수 없습니다.</p>
+                <input type="text" id="containerSelect" placeholder="이미지명 직접 입력 (예: nginx:latest)" style="padding:10px;width:350px;border:1px solid #ddd;border-radius:4px;">
+            <?php else: ?>
+                <select id="containerSelect">
+                    <option value="">-- 컨테이너 선택 --</option>
+                    <?php foreach ($containers as $c): ?>
+                    <option value="<?= htmlspecialchars($c['image']) ?>">[<?= htmlspecialchars($c['name']) ?>] <?= htmlspecialchars($c['image']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php endif; ?>
             <select id="severitySelect">
                 <option value="CRITICAL">CRITICAL만</option>
                 <option value="HIGH,CRITICAL" selected>HIGH 이상</option>
@@ -180,17 +179,17 @@ $containers = getRunningContainers();
     </div>
     <script>
         async function scanContainer() {
-            const target = document.getElementById('containerSelect').value;
+            const target = document.getElementById('containerSelect').value.trim();
             const severity = document.getElementById('severitySelect').value;
             const resultDiv = document.getElementById('result');
             const scanBtn = document.getElementById('scanBtn');
-            
+
             if (!target) { alert('컨테이너를 선택하세요.'); return; }
-            
+
             scanBtn.disabled = true;
             scanBtn.textContent = '⏳ 스캔 중...';
             resultDiv.innerHTML = '<div class="loading">🔄 스캔 중입니다. 잠시만 기다려주세요...</div>';
-            
+
             try {
                 const response = await fetch(`container_scan.php?action=scan&target=${encodeURIComponent(target)}&severity=${encodeURIComponent(severity)}`);
                 const markdown = await response.text();
@@ -198,7 +197,7 @@ $containers = getRunningContainers();
             } catch (e) {
                 resultDiv.innerHTML = '<p style="color:red;">오류가 발생했습니다: ' + e.message + '</p>';
             }
-            
+
             scanBtn.disabled = false;
             scanBtn.textContent = '🔍 스캔 시작';
         }
