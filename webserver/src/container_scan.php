@@ -25,8 +25,8 @@ function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy 스캔 실행 (JSON 형식, --quiet로 로그 숨김)
-    $command = "trivy image --quiet --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    // Trivy 스캔 실행 (JSON 형식)
+    $command = "trivy image --no-progress --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
