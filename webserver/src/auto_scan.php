@@ -5,9 +5,24 @@
  * - 모든 실행 중인 컨테이너 스캔
  */
 
-require_once 'db_functions.php';
+// 에러를 JSON으로 출력
+error_reporting(0);
+ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
+
+// 에러 핸들러
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    echo json_encode(['success' => false, 'message' => "Error: $errstr"]);
+    exit;
+});
+
+set_exception_handler(function($e) {
+    echo json_encode(['success' => false, 'message' => 'Exception: ' . $e->getMessage()]);
+    exit;
+});
+
+require_once 'db_functions.php';
 
 // Trivy 스캔 실행
 function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {

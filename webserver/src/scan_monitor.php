@@ -107,7 +107,7 @@ $images = $conn ? getScanHistoryByImage($conn) : [];
 <body>
     <div class="container">
         <div class="back-link">
-            <a href="index.html">← 메인으로</a>
+            <a href="index.php">← 메인으로</a>
             <a href="container_scan.php">컨테이너 스캔</a>
             <a href="scan_history.php">스캔 기록</a>
         </div>

@@ -75,7 +75,7 @@ $history = $conn ? getScanHistory($conn) : [];
 </head>
 <body>
     <div class="container">
-        <div class="back-link"><a href="index.html">← 메인으로</a> | <a href="container_scan.php">컨테이너 스캔</a></div>
+        <div class="back-link"><a href="index.php">← 메인으로</a> | <a href="container_scan.php">컨테이너 스캔</a></div>
         <h1>📋 스캔 기록</h1>
 
         <?php if (empty($history)): ?>
