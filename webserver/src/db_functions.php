@@ -36,15 +36,20 @@ function initDatabase($conn) {
         CREATE TABLE IF NOT EXISTS scan_vulnerabilities (
             id INT AUTO_INCREMENT PRIMARY KEY,
             scan_id INT NOT NULL,
-            library VARCHAR(255),
+            library VARCHAR(500),
             vulnerability VARCHAR(255),
             severity VARCHAR(50),
-            installed_version VARCHAR(100),
-            fixed_version VARCHAR(100),
+            installed_version VARCHAR(500),
+            fixed_version VARCHAR(500),
             title TEXT,
             FOREIGN KEY (scan_id) REFERENCES scan_history(id) ON DELETE CASCADE
         )
     ");
+
+    // 기존 테이블 컬럼 크기 수정 (이미 테이블이 있는 경우)
+    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY library VARCHAR(500)");
+    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
+    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
 }
 
 // 스캔 결과 저장

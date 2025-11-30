@@ -40,6 +40,18 @@ services:
     networks:
       - app-network
 
+  auto_scan:
+    build: ./auto_scan
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - API_URL=http://webserver:80/auto_scan.php
+    depends_on:
+      - webserver
+    restart: unless-stopped
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
