@@ -19,6 +19,8 @@ services:
       - "9555:9000"  # Nginx와 연결하기 위해 포트 열기
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # Docker 소켓 마운트
+      - ./webserver/www.conf:/usr/local/etc/php-fpm.d/www.conf  # PHP-FPM 설정
+      - ./webserver/src:/var/www/html  # 소스 코드 공유
     networks:
       - app-network
 
