@@ -8,11 +8,13 @@ function getDbConnection() {
     $password = "trivy_password";
     $dbname = "trivy_db";
 
-    $conn = new mysqli($host, $username, $password, $dbname);
-    if ($conn->connect_error) {
+    try {
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        $conn = new mysqli($host, $username, $password, $dbname);
+        return $conn;
+    } catch (mysqli_sql_exception $e) {
         return null;
     }
-    return $conn;
 }
 
 // 테이블 생성
@@ -145,9 +147,11 @@ if ($action === 'csv' && isset($_GET['id'])) {
     header('Content-Disposition: attachment; filename=scan_' . $scanId . '.csv');
 
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title']);
+    // UTF-8 BOM for Excel compatibility
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title'], ',', '"', '\\');
     foreach ($vulns as $v) {
-        fputcsv($output, [$v['library'], $v['vulnerability'], $v['severity'], $v['installed_version'], $v['fixed_version'], $v['title']]);
+        fputcsv($output, [$v['library'], $v['vulnerability'], $v['severity'], $v['installed_version'], $v['fixed_version'], $v['title']], ',', '"', '\\');
     }
     fclose($output);
     exit;

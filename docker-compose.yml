@@ -23,6 +23,8 @@ services:
       - ./webserver/src:/var/www/html  # 소스 코드 공유
       - ./webserver/entrypoint.sh:/entrypoint.sh  # 시작 스크립트
     entrypoint: ["/entrypoint.sh"]
+    depends_on:
+      - mysql
     networks:
       - app-network
 

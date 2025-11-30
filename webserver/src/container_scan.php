@@ -109,31 +109,46 @@ require_once 'scan_history.php';
 // API 요청 처리
 $action = $_GET['action'] ?? '';
 
+// 스캔 API
 if ($action === 'scan') {
+    header('Content-Type: application/json');
     $target = $_GET['target'] ?? '';
     $severity = $_GET['severity'] ?? 'HIGH,CRITICAL';
-    $save = $_GET['save'] ?? '0';
 
     if (empty($target)) {
-        echo "# ❌ 오류\n\n스캔 대상을 지정해주세요.";
+        echo json_encode(['success' => false, 'markdown' => "# ❌ 오류\n\n스캔 대상을 지정해주세요."]);
         exit;
     }
 
-    // 스캔 실행
     $result = scanContainerWithData($target, $severity);
+    echo json_encode([
+        'success' => $result['data'] !== null,
+        'markdown' => $result['markdown'],
+        'data' => $result['data'],
+        'target' => $target
+    ]);
+    exit;
+}
 
-    // 저장 옵션이 켜져 있으면 DB에 저장
-    if ($save === '1' && $result['data'] !== null) {
-        $conn = getDbConnection();
-        if ($conn) {
-            initDatabase($conn);
-            $scanId = saveScanResult($conn, $target, $result['data']);
-            $result['markdown'] .= "\n\n---\n✅ **스캔 결과가 저장되었습니다.** (ID: $scanId) [스캔 기록 보기](scan_history.php)";
-            $conn->close();
-        }
+// 저장 API
+if ($action === 'save') {
+    header('Content-Type: application/json');
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    if (!$input || !isset($input['target']) || !isset($input['data'])) {
+        echo json_encode(['success' => false, 'message' => '잘못된 요청입니다.']);
+        exit;
     }
 
-    echo $result['markdown'];
+    $conn = getDbConnection();
+    if ($conn) {
+        initDatabase($conn);
+        $scanId = saveScanResult($conn, $input['target'], $input['data']);
+        $conn->close();
+        echo json_encode(['success' => true, 'scanId' => $scanId, 'message' => "스캔 결과가 저장되었습니다. (ID: $scanId)"]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'DB 연결에 실패했습니다.']);
+    }
     exit;
 }
 
@@ -206,7 +221,6 @@ $containers = getRunningContainers();
                 <option value="MEDIUM,HIGH,CRITICAL">MEDIUM 이상</option>
                 <option value="LOW,MEDIUM,HIGH,CRITICAL">전체</option>
             </select>
-            <label style="margin-left:15px;"><input type="checkbox" id="saveCheck" checked> 결과 저장</label>
             <button onclick="scanContainer()" id="scanBtn">🔍 스캔 시작</button>
             <button onclick="location.reload()" class="refresh-btn">🔄 새로고침</button>
             <a href="scan_history.php" class="btn" style="background:#6c757d;color:white;padding:10px 15px;text-decoration:none;border-radius:4px;margin-left:10px;">📋 스캔 기록</a>
@@ -214,31 +228,100 @@ $containers = getRunningContainers();
         <div class="result" id="result">
             <p>컨테이너를 선택하고 스캔을 시작하세요.</p>
         </div>
+        <div id="saveArea" style="display:none; margin-top:20px; padding:15px; background:#e8f5e9; border-radius:8px; text-align:center;">
+            <p style="margin:0 0 10px 0;">📥 이 스캔 결과를 저장하시겠습니까?</p>
+            <button onclick="saveResult()" id="saveBtn" style="background:#28a745;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;">💾 저장하기</button>
+            <button onclick="hideSaveArea()" style="background:#6c757d;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;margin-left:10px;">취소</button>
+        </div>
+        <div id="saveMessage" style="display:none; margin-top:10px; padding:10px; border-radius:4px; text-align:center;"></div>
     </div>
     <script>
+        let lastScanData = null;
+        let lastScanTarget = null;
+
         async function scanContainer() {
             const target = document.getElementById('containerSelect').value.trim();
             const severity = document.getElementById('severitySelect').value;
-            const save = document.getElementById('saveCheck').checked ? '1' : '0';
             const resultDiv = document.getElementById('result');
             const scanBtn = document.getElementById('scanBtn');
+            const saveArea = document.getElementById('saveArea');
+            const saveMessage = document.getElementById('saveMessage');
 
             if (!target) { alert('컨테이너를 선택하세요.'); return; }
+
+            // 초기화
+            lastScanData = null;
+            lastScanTarget = null;
+            saveArea.style.display = 'none';
+            saveMessage.style.display = 'none';
 
             scanBtn.disabled = true;
             scanBtn.textContent = '⏳ 스캔 중...';
             resultDiv.innerHTML = '<div class="loading">🔄 스캔 중입니다. 잠시만 기다려주세요...</div>';
 
             try {
-                const response = await fetch(`container_scan.php?action=scan&target=${encodeURIComponent(target)}&severity=${encodeURIComponent(severity)}&save=${save}`);
-                const markdown = await response.text();
-                resultDiv.innerHTML = marked.parse(markdown);
+                const response = await fetch(`container_scan.php?action=scan&target=${encodeURIComponent(target)}&severity=${encodeURIComponent(severity)}`);
+                const result = await response.json();
+                resultDiv.innerHTML = marked.parse(result.markdown);
+
+                // 스캔 성공 시 저장 버튼 표시
+                if (result.success && result.data) {
+                    lastScanData = result.data;
+                    lastScanTarget = result.target;
+                    saveArea.style.display = 'block';
+                }
             } catch (e) {
                 resultDiv.innerHTML = '<p style="color:red;">오류가 발생했습니다: ' + e.message + '</p>';
             }
 
             scanBtn.disabled = false;
             scanBtn.textContent = '🔍 스캔 시작';
+        }
+
+        async function saveResult() {
+            if (!lastScanData || !lastScanTarget) {
+                alert('저장할 스캔 결과가 없습니다.');
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveBtn');
+            const saveMessage = document.getElementById('saveMessage');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '저장 중...';
+
+            try {
+                const response = await fetch('container_scan.php?action=save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: lastScanTarget, data: lastScanData })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    saveMessage.style.display = 'block';
+                    saveMessage.style.background = '#d4edda';
+                    saveMessage.style.color = '#155724';
+                    saveMessage.innerHTML = '✅ ' + result.message + ' <a href="scan_history.php">스캔 기록 보기 →</a>';
+                    document.getElementById('saveArea').style.display = 'none';
+                } else {
+                    saveMessage.style.display = 'block';
+                    saveMessage.style.background = '#f8d7da';
+                    saveMessage.style.color = '#721c24';
+                    saveMessage.textContent = '❌ ' + result.message;
+                }
+            } catch (e) {
+                saveMessage.style.display = 'block';
+                saveMessage.style.background = '#f8d7da';
+                saveMessage.style.color = '#721c24';
+                saveMessage.textContent = '❌ 저장 중 오류: ' + e.message;
+            }
+
+            saveBtn.disabled = false;
+            saveBtn.textContent = '💾 저장하기';
+        }
+
+        function hideSaveArea() {
+            document.getElementById('saveArea').style.display = 'none';
         }
     </script>
 </body>
