@@ -103,20 +103,56 @@ function getSeverityIcon($severity) {
     }
 }
 
+// MySQL 연결 (스캔 결과 저장용)
+require_once 'scan_history.php';
+
 // API 요청 처리
 $action = $_GET['action'] ?? '';
 
 if ($action === 'scan') {
     $target = $_GET['target'] ?? '';
     $severity = $_GET['severity'] ?? 'HIGH,CRITICAL';
+    $save = $_GET['save'] ?? '0';
 
     if (empty($target)) {
         echo "# ❌ 오류\n\n스캔 대상을 지정해주세요.";
         exit;
     }
 
-    echo scanContainer($target, $severity);
+    // 스캔 실행
+    $result = scanContainerWithData($target, $severity);
+
+    // 저장 옵션이 켜져 있으면 DB에 저장
+    if ($save === '1' && $result['data'] !== null) {
+        $conn = getDbConnection();
+        if ($conn) {
+            initDatabase($conn);
+            $scanId = saveScanResult($conn, $target, $result['data']);
+            $result['markdown'] .= "\n\n---\n✅ **스캔 결과가 저장되었습니다.** (ID: $scanId) [스캔 기록 보기](scan_history.php)";
+            $conn->close();
+        }
+    }
+
+    echo $result['markdown'];
     exit;
+}
+
+// 스캔 + 데이터 반환 함수
+function scanContainerWithData($imageOrId, $severity = 'HIGH,CRITICAL') {
+    $safeTarget = escapeshellarg($imageOrId);
+    $safeSeverity = escapeshellarg($severity);
+
+    $command = "trivy image --no-progress --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    exec($command, $output, $result_code);
+
+    $jsonOutput = implode("\n", $output);
+    $data = json_decode($jsonOutput, true);
+
+    if ($data === null) {
+        return ['markdown' => "## ❌ 스캔 오류\n\n```\n" . $jsonOutput . "\n```", 'data' => null];
+    }
+
+    return ['markdown' => convertToMarkdown($data, $imageOrId), 'data' => $data];
 }
 
 // 실행 중인 컨테이너 목록
@@ -170,8 +206,10 @@ $containers = getRunningContainers();
                 <option value="MEDIUM,HIGH,CRITICAL">MEDIUM 이상</option>
                 <option value="LOW,MEDIUM,HIGH,CRITICAL">전체</option>
             </select>
+            <label style="margin-left:15px;"><input type="checkbox" id="saveCheck" checked> 결과 저장</label>
             <button onclick="scanContainer()" id="scanBtn">🔍 스캔 시작</button>
             <button onclick="location.reload()" class="refresh-btn">🔄 새로고침</button>
+            <a href="scan_history.php" class="btn" style="background:#6c757d;color:white;padding:10px 15px;text-decoration:none;border-radius:4px;margin-left:10px;">📋 스캔 기록</a>
         </div>
         <div class="result" id="result">
             <p>컨테이너를 선택하고 스캔을 시작하세요.</p>
@@ -181,6 +219,7 @@ $containers = getRunningContainers();
         async function scanContainer() {
             const target = document.getElementById('containerSelect').value.trim();
             const severity = document.getElementById('severitySelect').value;
+            const save = document.getElementById('saveCheck').checked ? '1' : '0';
             const resultDiv = document.getElementById('result');
             const scanBtn = document.getElementById('scanBtn');
 
@@ -191,7 +230,7 @@ $containers = getRunningContainers();
             resultDiv.innerHTML = '<div class="loading">🔄 스캔 중입니다. 잠시만 기다려주세요...</div>';
 
             try {
-                const response = await fetch(`container_scan.php?action=scan&target=${encodeURIComponent(target)}&severity=${encodeURIComponent(severity)}`);
+                const response = await fetch(`container_scan.php?action=scan&target=${encodeURIComponent(target)}&severity=${encodeURIComponent(severity)}&save=${save}`);
                 const markdown = await response.text();
                 resultDiv.innerHTML = marked.parse(markdown);
             } catch (e) {
