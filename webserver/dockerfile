@@ -4,6 +4,9 @@ FROM php:8-fpm
 # Install Nginx and dependencies
 RUN apt-get update && apt-get install -y nginx
 
+# Install PHP mysqli extension
+RUN docker-php-ext-install mysqli && docker-php-ext-enable mysqli
+
 # Configure Nginx and PHP
 COPY default.conf /etc/nginx/sites-available/default
 COPY www.conf /usr/local/etc/php-fpm.d/www.conf
