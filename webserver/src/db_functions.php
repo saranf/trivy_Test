@@ -120,3 +120,97 @@ function deleteScan($conn, $scanId) {
     $stmt->close();
 }
 
+// 특정 이미지의 최근 2개 스캔 조회 (diff용)
+function getRecentScansForImage($conn, $imageName, $limit = 2) {
+    $stmt = $conn->prepare("SELECT * FROM scan_history WHERE image_name = ? ORDER BY scan_date DESC LIMIT ?");
+    $stmt->bind_param("si", $imageName, $limit);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $scans = [];
+    while ($row = $result->fetch_assoc()) {
+        $scans[] = $row;
+    }
+    $stmt->close();
+    return $scans;
+}
+
+// 두 스캔 간의 diff 계산
+function calculateScanDiff($conn, $oldScanId, $newScanId) {
+    $oldVulns = getScanVulnerabilities($conn, $oldScanId);
+    $newVulns = getScanVulnerabilities($conn, $newScanId);
+
+    // vulnerability ID 기준으로 맵 생성
+    $oldMap = [];
+    foreach ($oldVulns as $v) {
+        $oldMap[$v['vulnerability']] = $v;
+    }
+
+    $newMap = [];
+    foreach ($newVulns as $v) {
+        $newMap[$v['vulnerability']] = $v;
+    }
+
+    $added = [];   // 새로 추가된 취약점
+    $removed = []; // 해결된 취약점
+    $unchanged = []; // 그대로인 취약점
+
+    // 새로 추가된 취약점 찾기
+    foreach ($newVulns as $v) {
+        if (!isset($oldMap[$v['vulnerability']])) {
+            $added[] = $v;
+        } else {
+            $unchanged[] = $v;
+        }
+    }
+
+    // 해결된 취약점 찾기
+    foreach ($oldVulns as $v) {
+        if (!isset($newMap[$v['vulnerability']])) {
+            $removed[] = $v;
+        }
+    }
+
+    return [
+        'added' => $added,
+        'removed' => $removed,
+        'unchanged' => $unchanged,
+        'summary' => [
+            'added_count' => count($added),
+            'removed_count' => count($removed),
+            'unchanged_count' => count($unchanged)
+        ]
+    ];
+}
+
+// 이미지별 스캔 기록 조회
+function getScanHistoryByImage($conn) {
+    $result = $conn->query("
+        SELECT image_name,
+               COUNT(*) as scan_count,
+               MAX(scan_date) as last_scan,
+               MAX(id) as latest_scan_id
+        FROM scan_history
+        GROUP BY image_name
+        ORDER BY last_scan DESC
+    ");
+    $images = [];
+    while ($row = $result->fetch_assoc()) {
+        $images[] = $row;
+    }
+    return $images;
+}
+
+// 특정 이미지의 모든 스캔 기록
+function getScansForImage($conn, $imageName) {
+    $stmt = $conn->prepare("SELECT * FROM scan_history WHERE image_name = ? ORDER BY scan_date DESC");
+    $stmt->bind_param("s", $imageName);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $scans = [];
+    while ($row = $result->fetch_assoc()) {
+        $scans[] = $row;
+    }
+    $stmt->close();
+    return $scans;
+}
+
