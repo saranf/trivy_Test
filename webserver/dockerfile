@@ -21,6 +21,9 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
     apt-get update && apt-get install -y docker-ce-cli
 
+# Add www-data to docker group (GID 999 matches host docker socket)
+RUN groupadd -g 999 docker && usermod -aG docker www-data
+
 # Create cache directory and set permissions
 RUN mkdir -p /var/www/.cache && chmod -R 777 /var/www/.cache
 
