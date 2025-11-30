@@ -16,7 +16,7 @@ services:
   webserver:
     image: qorwlsdk1995/my-php-app:latest  # Docker Hub의 이미지 사용
     ports:
-      - "9000:9000"  # Nginx와 연결하기 위해 포트 열기
+      - "9555:9000"  # Nginx와 연결하기 위해 포트 열기
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # Docker 소켓 마운트
     networks:
