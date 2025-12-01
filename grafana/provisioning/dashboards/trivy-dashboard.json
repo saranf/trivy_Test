@@ -262,6 +262,78 @@
         "gridPos": {"x": 12, "y": 23, "w": 12, "h": 7},
         "targets": [{"expr": "rate(container_network_transmit_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "Bps"}}
+      },
+      {
+        "id": 13,
+        "title": "📋 전체 컨테이너 로그",
+        "type": "logs",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "gridPos": {"x": 0, "y": 30, "w": 24, "h": 10},
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        },
+        "targets": [
+          {
+            "expr": "{container=~\".+\"} |= \"$__searchFilter\"",
+            "refId": "A",
+            "datasource": {"type": "loki", "uid": "loki"}
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "🔍 선택된 컨테이너 로그 ($container)",
+        "type": "logs",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "gridPos": {"x": 0, "y": 40, "w": 24, "h": 10},
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        },
+        "targets": [
+          {
+            "expr": "{container=~\"$container\"}",
+            "refId": "A",
+            "datasource": {"type": "loki", "uid": "loki"}
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "⚠️ 에러 로그 (전체)",
+        "type": "logs",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "gridPos": {"x": 0, "y": 50, "w": 24, "h": 8},
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        },
+        "targets": [
+          {
+            "expr": "{container=~\".+\"} |~ \"(?i)(error|fail|exception|critical|fatal)\"",
+            "refId": "A",
+            "datasource": {"type": "loki", "uid": "loki"}
+          }
+        ]
       }
     ]
 }

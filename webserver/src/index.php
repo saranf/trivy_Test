@@ -49,7 +49,14 @@ initDatabase($conn);
             <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                 <h2 style="color: white;">📊 Grafana Dashboard</h2>
                 <p style="color: rgba(255,255,255,0.9);">전체 컨테이너 모니터링 및 취약점 현황 시각화</p>
-                <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" class="btn" style="background: white; color: #667eea;">대시보드 열기</a>
+                <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" class="btn" style="background: white; color: #667eea;">메트릭 대시보드</a>
+            </div>
+
+            <div class="card" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 2px solid #4ade80;">
+                <h2 style="color: #4ade80;">🔭 Loki 로그 대시보드</h2>
+                <p style="color: rgba(255,255,255,0.9);">모든 컨테이너 로그 통합 조회 및 검색</p>
+                <a href="http://monitor.rmstudio.co.kr:3000/d/loki-logs/container-logs-loki?orgId=1" target="_blank" class="btn" style="background: #4ade80; color: #0f172a;">로그 대시보드</a>
+                <a href="http://monitor.rmstudio.co.kr:3000/explore?orgId=1&left=%7B%22datasource%22:%22loki%22%7D" target="_blank" class="btn" style="background: #334155; color: white; margin-left: 5px;">Explore</a>
             </div>
 
             <!-- Operator 이상 접근 가능 -->

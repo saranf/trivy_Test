@@ -48,7 +48,8 @@
 | **주기적 스캔 설정** | `/scheduled_scans.php` | Admin |
 | 사용자 관리 | `/users.php` | Admin |
 | 감사 로그 | `/audit_logs.php` | Admin |
-| Grafana Dashboard | `:3000/d/trivy-security/` | - |
+| Grafana 메트릭 대시보드 | `:3000/d/trivy-security/` | - |
+| **Loki 로그 대시보드** | `:3000/d/loki-logs/` | - |
 | Prometheus Metrics | `/metrics.php` | - |
 
 ---
@@ -88,6 +89,14 @@
 - **탐지 대상**: API 키, 비밀번호, 토큰, 인증서 등
 - Trivy `--scanners secret` 옵션 활용
 - 스캔 결과에 별도 섹션으로 표시
+
+### 3-2. 📦 SBOM 다운로드 (Software Bill of Materials)
+- 스캔 완료 후 SBOM 다운로드 버튼 표시
+- 스캔 기록 페이지에서도 SBOM 다운로드 가능
+- **지원 포맷**:
+  - **CycloneDX**: `.cdx.json` (OWASP 표준)
+  - **SPDX**: `.spdx.json` (Linux Foundation 표준)
+- 소프트웨어 공급망 보안 및 컴플라이언스 대응
 
 ### 4. 주기적 스캔 설정 (Admin 전용)
 - 특정 이미지/컨테이너를 정해진 주기로 자동 스캔
@@ -205,13 +214,17 @@ trivy_Test/
 │       ├── run_scheduled_scans_api.php  # 주기적 스캔 실행 API
 │       ├── users.php             # 사용자 관리
 │       ├── audit_logs.php        # 감사 로그
-│       └── metrics.php           # Prometheus 메트릭
+│       ├── metrics.php           # Prometheus 메트릭
+│       ├── sbom_download.php     # 📦 SBOM 다운로드 API
+│       ├── security_dashboard.php # 🛡️ 보안 진단 대시보드
+│       └── runtime_audit.php     # 🔒 런타임 보안 감사
 ├── grafana/
 │   └── provisioning/
 │       ├── datasources/
 │       │   └── datasource.yml  # Prometheus + Loki 설정
 │       └── dashboards/
-│           └── trivy-dashboard.json
+│           ├── trivy-dashboard.json      # 📊 메트릭 대시보드
+│           └── loki-logs-dashboard.json  # 🔭 로그 대시보드
 ├── prometheus/
 │   └── prometheus.yml
 ├── loki/
@@ -264,17 +277,41 @@ docker volume rm trivy_test_mysql_data
 
 ## 🔭 Observability: 통합 로깅 (Loki + Promtail)
 
-모든 컨테이너 로그를 Grafana에서 통합 조회 가능:
+모든 컨테이너 로그를 Grafana에서 통합 조회 가능합니다.
 
-1. **Grafana 접속** → 좌측 메뉴 → **Explore**
-2. **Data source**: Loki 선택
-3. **Label filters**: `service = webserver` 등 선택
-4. 로그 검색 실행
+### Loki 로그 대시보드
 
-**LogQL 쿼리 예시**:
+**URL**: `http://localhost:3000/d/loki-logs/container-logs-loki`
+
+| 패널 | 설명 |
+|------|------|
+| 📊 로그 볼륨 | 시간대별 로그 발생량 (컨테이너별) |
+| ⚠️ 에러 로그 볼륨 | error, fail, exception 키워드 |
+| 🔴 Critical/Fatal 볼륨 | critical, fatal 키워드 |
+| 📋 전체 로그 | 선택된 컨테이너의 실시간 로그 |
+| ⚠️ 에러 로그만 | 에러 관련 로그만 필터링 |
+| 🐳 컨테이너별 로그 수 | Top 10 컨테이너 |
+| 🔴 에러 로그 수 | 컨테이너별 에러 발생량 |
+
+### 변수 필터링 (Grafana와 동일)
+
+| 변수 | 설명 |
+|------|------|
+| `$container` | 특정 컨테이너만 필터링 |
+| `$service` | Docker Compose 서비스별 필터링 |
+| `$search` | 텍스트 검색 |
+
+### 접근 방법
+
+1. **메인 페이지** → "🔭 Loki 로그 대시보드" 클릭
+2. **스캔 완료 후** → "📋 이 컨테이너 로그" 클릭 (해당 컨테이너만)
+3. **직접 접근**: Grafana → Dashboards → "Container Logs (Loki)"
+
+### LogQL 쿼리 예시
 ```
+{container="trivy_test-webserver-1"}
 {service="webserver"} |= "error"
-{container=~"trivy.*"} | json | severity="CRITICAL"
+{container=~"trivy.*"} |~ "(?i)(error|fail|exception)"
 ```
 
 ---

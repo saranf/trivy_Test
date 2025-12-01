@@ -377,9 +377,13 @@ $containers = getRunningContainers();
         <!-- Grafana 링크 영역 -->
         <div id="grafanaArea" style="display:none; margin-top:20px; padding:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px;">
             <h3 style="color:white; margin:0 0 10px 0;">📊 Grafana 모니터링</h3>
-            <p style="color:rgba(255,255,255,0.9); margin:0 0 15px 0;">스캔한 컨테이너의 상세 메트릭을 확인하세요</p>
-            <a id="grafanaContainerLink" href="#" target="_blank" style="display:inline-block; background:white; color:#667eea; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold; margin-right:10px;">🐳 이 컨테이너 보기</a>
-            <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 전체 대시보드</a>
+            <p style="color:rgba(255,255,255,0.9); margin:0 0 15px 0;">스캔한 컨테이너의 상세 메트릭과 로그를 확인하세요</p>
+            <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                <a id="grafanaContainerLink" href="#" target="_blank" style="display:inline-block; background:white; color:#667eea; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold;">🐳 이 컨테이너 메트릭</a>
+                <a id="lokiContainerLink" href="#" target="_blank" style="display:inline-block; background:#4ade80; color:#1a1a2e; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold;">📋 이 컨테이너 로그</a>
+                <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 메트릭 대시보드</a>
+                <a href="http://monitor.rmstudio.co.kr:3000/d/loki-logs/container-logs-loki?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">🔭 로그 대시보드</a>
+            </div>
         </div>
     </div>
     <script>
@@ -420,11 +424,18 @@ $containers = getRunningContainers();
                     // SBOM 다운로드 영역 표시
                     document.getElementById('sbomArea').style.display = 'block';
 
-                    // Grafana 링크 표시
+                    // Grafana 메트릭 + Loki 로그 링크 표시
                     const grafanaArea = document.getElementById('grafanaArea');
                     const grafanaLink = document.getElementById('grafanaContainerLink');
+                    const lokiContainerLink = document.getElementById('lokiContainerLink');
                     const containerName = getContainerName(target);
+
+                    // 메트릭 대시보드 링크 (해당 컨테이너 필터)
                     grafanaLink.href = `http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1&var-container=${encodeURIComponent(containerName)}&var-image=${encodeURIComponent(target)}`;
+
+                    // Loki 로그 대시보드 링크 (해당 컨테이너 필터)
+                    lokiContainerLink.href = `http://monitor.rmstudio.co.kr:3000/d/loki-logs/container-logs-loki?orgId=1&var-container=${encodeURIComponent(containerName)}`;
+
                     grafanaArea.style.display = 'block';
                 }
             } catch (e) {

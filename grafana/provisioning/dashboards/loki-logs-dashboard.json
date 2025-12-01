@@ -1,0 +1,265 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "📊 Trivy 보안 대시보드",
+      "tooltip": "",
+      "type": "link",
+      "url": "/d/trivy-security/trivy-security-scanner"
+    }
+  ],
+  "liveNow": false,
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["loki", "logs", "containers"],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "label_values(container)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Container",
+        "multi": true,
+        "name": "container",
+        "options": [],
+        "query": "label_values(container)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "label_values(service)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": "label_values(service)",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Search",
+        "name": "search",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "🔭 Container Logs (Loki)",
+  "uid": "loki-logs",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "📊 로그 볼륨 (시간대별)",
+      "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 6},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container=~\"$container\", service=~\"$service\"} |~ \"$search\" [1m])) by (container)",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 50
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "⚠️ 에러 로그 볼륨",
+      "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 5},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container=~\"$container\"} |~ \"(?i)(error|fail|exception)\" [1m])) by (container)",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "bars", "fillOpacity": 80}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "🔴 Critical/Fatal 로그 볼륨",
+      "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 5},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container=~\"$container\"} |~ \"(?i)(critical|fatal)\" [1m])) by (container)",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"fixedColor": "red", "mode": "fixed"},
+          "custom": {"drawStyle": "bars", "fillOpacity": 80}
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "📋 전체 로그 (Container: $container)",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 11, "w": 24, "h": 12},
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{container=~\"$container\", service=~\"$service\"} |~ \"$search\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "⚠️ 에러 로그만 (error, fail, exception)",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 23, "w": 24, "h": 10},
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{container=~\"$container\", service=~\"$service\"} |~ \"(?i)(error|fail|exception|critical|fatal)\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "🐳 컨테이너별 로그 수 (Top 10)",
+      "type": "bargauge",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 0, "y": 33, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "topk(10, sum(count_over_time({container=~\".+\"}[1h])) by (container))",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}}
+      }
+    },
+    {
+      "id": 7,
+      "title": "🔴 에러 로그 수 (컨테이너별)",
+      "type": "bargauge",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"x": 12, "y": 33, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "topk(10, sum(count_over_time({container=~\".+\"} |~ \"(?i)(error|fail|exception)\" [1h])) by (container))",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "fieldConfig": {
+        "defaults": {"color": {"fixedColor": "red", "mode": "fixed"}}
+      }
+    }
+  ]
+}
+
