@@ -22,6 +22,28 @@
 - 🔒 실제 데이터(이미지명 등)는 마스킹되어 표시
 - 💾 저장/메일 발송은 시뮬레이션 (실제 동작 안함)
 - 📊 실제 스캔 실행 및 결과 확인 가능
+- ⏰ **데모 환경은 매일 자정(KST)에 자동 초기화**
+
+### 🔄 데모 환경 자동 초기화
+
+매일 자정(00:00 KST)에 자동 실행되는 초기화 작업:
+
+| 항목 | 동작 |
+|------|------|
+| 스캔 기록 | 7일 이상 된 스캔 데이터 삭제 |
+| 감사 로그 | 30일 이상 된 로그 삭제 |
+| 예외 처리 | 만료된 예외 처리 비활성화 |
+| 스케줄 | 30일 이상 비활성 스케줄 삭제 |
+| demo 계정 | 비밀번호 초기화 (demo123) |
+
+**수동 실행** (Admin):
+```bash
+# 컨테이너 내부에서
+php /var/www/html/reset_demo.php
+
+# 외부에서 API 호출
+curl "http://localhost:6987/reset_demo.php?key=trivy_demo_reset_2024"
+```
 
 ### RBAC (Role-Based Access Control) - 4-Tier 구조
 
@@ -217,7 +239,8 @@ trivy_Test/
 │       ├── metrics.php           # Prometheus 메트릭
 │       ├── sbom_download.php     # 📦 SBOM 다운로드 API
 │       ├── security_dashboard.php # 🛡️ 보안 진단 대시보드
-│       └── runtime_audit.php     # 🔒 런타임 보안 감사
+│       ├── runtime_audit.php     # 🔒 런타임 보안 감사
+│       └── reset_demo.php        # 🔄 데모 환경 초기화 스크립트
 ├── grafana/
 │   └── provisioning/
 │       ├── datasources/

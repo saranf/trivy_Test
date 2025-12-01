@@ -119,6 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 계정: <code>demo</code> / 비밀번호: <code>demo123</code><br>
                 <small>(실제 데이터는 마스킹되며, 저장/메일 발송은 시뮬레이션됩니다)</small>
             </p>
+            <p style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.3); font-size:11px;">
+                ⏰ <strong>데모 환경은 매일 자정(KST)에 초기화됩니다.</strong>
+            </p>
         </div>
 
         <div class="role-info">
