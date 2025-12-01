@@ -275,12 +275,20 @@ $containers = getRunningContainers();
         .loading { text-align: center; padding: 40px; color: #666; }
         .refresh-btn { background: #28a745; }
         .refresh-btn:hover { background: #1e7e34; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; background: #e9ecef; border-radius: 4px; text-decoration: none; color: #333; }
+        .tab.active { background: #007bff; color: white; }
+        .tab:hover { opacity: 0.9; }
         <?= getAuthStyles() ?>
     </style>
 </head>
 <body>
     <?= getNavMenu() ?>
     <div class="container">
+        <div class="tabs">
+            <a href="container_scan.php" class="tab active">🐳 이미지 스캔</a>
+            <a href="config_scan.php" class="tab">👮 컴플라이언스 스캔</a>
+        </div>
         <h1>🐳 Docker Container Trivy Scanner</h1>
         <div class="controls">
             <label><strong>실행 중인 컨테이너:</strong></label><br><br>

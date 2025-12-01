@@ -85,15 +85,18 @@
 - 마지막 실행 시간 및 다음 실행 시간 표시
 
 ### 5. 👮 컴플라이언스 진단 (Compliance Check)
-- **라이브러리 취약점(CVE)** + **설정 오류(Misconfiguration)** 통합 스캔
-- Trivy `--scanners vuln,misconfig` 옵션 활용
-- **탐지 항목 예시**:
-  - Root 계정으로 컨테이너 실행 여부
-  - Privileged(특권) 모드 사용
-  - 불필요한 포트 노출
-  - Dockerfile 보안 모범 사례 위반
-- 스캔 결과에서 **[소프트웨어 취약점]** / **[컴플라이언스]** 분리 표시
-- **어필 포인트**: "단순 라이브러리 패치뿐만 아니라, 인프라 설정(IaC)의 보안 규정 준수 여부까지 통합 관제"
+- **전용 컴플라이언스 스캔 페이지** (`config_scan.php`)
+- **이미지 스캔**: Docker 이미지 내 소프트웨어 취약점(CVE) 탐지
+- **설정 스캔**: Dockerfile, Kubernetes, Terraform 등 IaC 파일 보안 설정 오류 탐지
+- **주요 탐지 대상**:
+  - 📋 Dockerfile: USER 미지정, 불필요한 권한, 보안 모범 사례 위반
+  - ☸️ Kubernetes: privileged 모드, hostPath 마운트, securityContext 설정
+  - 🏗️ Terraform/CloudFormation: 퍼블릭 버킷, 암호화 미설정, 보안 그룹 규칙
+- **사용 방법**:
+  1. 메인 페이지 → "👮 컴플라이언스 스캔" 클릭
+  2. 스캔할 경로 입력 (예: `/var/www/html`, `/app`)
+  3. 스캔 실행 → 결과 확인 및 저장
+- 스캔 기록에서 `👮설정` 태그로 구분
 
 ### 6. 📊 운영 성과 지표 (KPI) - MTTR
 - **MTTR (Mean Time To Remediate)**: 평균 조치 기간

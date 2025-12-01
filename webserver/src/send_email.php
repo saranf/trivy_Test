@@ -246,17 +246,98 @@ function sendEmailLocal($to, $subject, $html, $csv, $config) {
         // 제목 인코딩
         $encodedSubject = "=?UTF-8?B?" . base64_encode($subject) . "?=";
 
-        // PHP mail() 함수로 발송
-        $result = mail($to, $encodedSubject, $body, implode("\r\n", $headers), "-f$from");
+        // SMTP (mailserver 컨테이너)로 먼저 시도
+        $smtpResult = sendViaSmtp($to, $encodedSubject, $body, $headers, $from);
+        if ($smtpResult['success']) {
+            return $smtpResult;
+        }
 
+        // SMTP 실패 시 PHP mail() 시도
+        $result = mail($to, $encodedSubject, $body, implode("\r\n", $headers), "-f$from");
         if ($result) {
             return ['success' => true, 'message' => "이메일이 $to 로 발송되었습니다."];
-        } else {
-            // mail() 실패시 sendmail 직접 사용 시도
-            return sendViaSendmail($to, $encodedSubject, $body, $headers, $from);
         }
+
+        // mail() 실패 시 sendmail 시도
+        return sendViaSendmail($to, $encodedSubject, $body, $headers, $from);
+
     } catch (Exception $e) {
         return ['success' => false, 'message' => '이메일 발송 중 오류: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * SMTP를 통해 메일 발송 (mailserver 컨테이너 사용)
+ */
+function sendViaSmtp($to, $subject, $body, $headers, $from) {
+    $smtpHost = getenv('SMTP_HOST') ?: 'mailserver';  // Docker 컨테이너 이름
+    $smtpPort = getenv('SMTP_PORT') ?: 25;
+
+    try {
+        $socket = @fsockopen($smtpHost, $smtpPort, $errno, $errstr, 10);
+        if (!$socket) {
+            return ['success' => false, 'message' => "SMTP 연결 실패: $errstr ($errno)"];
+        }
+
+        // SMTP 응답 읽기
+        $response = fgets($socket, 512);
+        if (substr($response, 0, 3) != '220') {
+            fclose($socket);
+            return ['success' => false, 'message' => "SMTP 서버 응답 오류: $response"];
+        }
+
+        // HELO
+        fputs($socket, "HELO localhost\r\n");
+        $response = fgets($socket, 512);
+
+        // MAIL FROM
+        fputs($socket, "MAIL FROM:<$from>\r\n");
+        $response = fgets($socket, 512);
+        if (substr($response, 0, 3) != '250') {
+            fclose($socket);
+            return ['success' => false, 'message' => "MAIL FROM 실패: $response"];
+        }
+
+        // RCPT TO
+        fputs($socket, "RCPT TO:<$to>\r\n");
+        $response = fgets($socket, 512);
+        if (substr($response, 0, 3) != '250') {
+            fclose($socket);
+            return ['success' => false, 'message' => "RCPT TO 실패: $response"];
+        }
+
+        // DATA
+        fputs($socket, "DATA\r\n");
+        $response = fgets($socket, 512);
+        if (substr($response, 0, 3) != '354') {
+            fclose($socket);
+            return ['success' => false, 'message' => "DATA 실패: $response"];
+        }
+
+        // 메일 내용 전송
+        $fullMessage = implode("\r\n", $headers) . "\r\n";
+        $fullMessage .= "To: $to\r\n";
+        $fullMessage .= "Subject: $subject\r\n";
+        $fullMessage .= "\r\n";
+        $fullMessage .= $body;
+        $fullMessage .= "\r\n.\r\n";  // 메일 종료
+
+        fputs($socket, $fullMessage);
+        $response = fgets($socket, 512);
+        if (substr($response, 0, 3) != '250') {
+            fclose($socket);
+            return ['success' => false, 'message' => "메일 전송 실패: $response"];
+        }
+
+        // QUIT
+        fputs($socket, "QUIT\r\n");
+        fclose($socket);
+
+        return ['success' => true, 'message' => "이메일이 $to 로 발송되었습니다."];
+
+    } catch (Exception $e) {
+        if (isset($socket) && $socket) fclose($socket);
+        return ['success' => false, 'message' => 'SMTP 오류: ' . $e->getMessage()];
     }
 }
 
@@ -264,7 +345,7 @@ function sendViaSendmail($to, $subject, $body, $headers, $from) {
     $sendmail = '/usr/sbin/sendmail';
 
     if (!file_exists($sendmail)) {
-        return ['success' => false, 'message' => 'sendmail이 설치되지 않았습니다. 서버에 postfix 또는 sendmail을 설치하세요.'];
+        return ['success' => false, 'message' => 'sendmail이 설치되지 않았습니다. SMTP 서버도 연결할 수 없습니다.'];
     }
 
     $fullMessage = implode("\r\n", $headers) . "\r\n";

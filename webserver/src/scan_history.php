@@ -172,6 +172,8 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
                     <option value="manual" <?= $sourceFilter === 'manual' ? 'selected' : '' ?>>수동 스캔</option>
                     <option value="auto" <?= $sourceFilter === 'auto' ? 'selected' : '' ?>>자동 스캔</option>
                     <option value="bulk" <?= $sourceFilter === 'bulk' ? 'selected' : '' ?>>일괄 스캔</option>
+                    <option value="config" <?= $sourceFilter === 'config' ? 'selected' : '' ?>>컴플라이언스</option>
+                    <option value="scheduled" <?= $sourceFilter === 'scheduled' ? 'selected' : '' ?>>주기적 스캔</option>
                 </select>
                 <button type="submit">검색</button>
                 <a href="scan_history.php">초기화</a>
@@ -202,7 +204,7 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
                 <tbody>
                     <?php foreach ($history as $h):
                         $source = $h['scan_source'] ?? 'manual';
-                        $sourceLabel = ['manual' => '수동', 'auto' => '자동', 'bulk' => '일괄'][$source] ?? $source;
+                        $sourceLabel = ['manual' => '수동', 'auto' => '자동', 'bulk' => '일괄', 'config' => '👮설정', 'scheduled' => '⏰주기'][$source] ?? $source;
                         $tagClass = "tag-$source";
                     ?>
                     <tr>

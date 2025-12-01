@@ -93,6 +93,16 @@ initDatabase($conn);
                 <?php endif; ?>
             </div>
 
+            <div class="card <?= isOperator() ? '' : 'disabled-card' ?>" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h2 style="color: white;">👮 컴플라이언스 스캔</h2>
+                <p style="color: rgba(255,255,255,0.9);">Dockerfile, K8s, Terraform 등 IaC 설정 오류 탐지</p>
+                <?php if (isOperator()): ?>
+                <a href="./config_scan.php" class="btn" style="background: white; color: #764ba2;">설정 스캔</a>
+                <?php else: ?>
+                <span class="btn gray" style="background: rgba(255,255,255,0.3); color: white;">Operator 권한 필요</span>
+                <?php endif; ?>
+            </div>
+
             <!-- Admin 전용 -->
             <?php if (isAdmin()): ?>
             <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
