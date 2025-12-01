@@ -31,10 +31,18 @@ function scanConfig($path, $severity = 'HIGH,CRITICAL') {
     $safeSeverity = escapeshellarg($severity);
 
     // Trivy config 스캔 (misconfig만) - v0.29.2 호환
-    $command = "trivy config --severity $safeSeverity --format json $safePath 2>&1";
+    // 2>/dev/null로 INFO 로그 제거
+    $command = "trivy config --severity $safeSeverity --format json $safePath 2>/dev/null";
     exec($command, $output, $resultCode);
 
     $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
     $data = json_decode($jsonOutput, true);
 
     return [
@@ -65,14 +73,22 @@ function scanCompliance($target, $scanType = 'security-checks') {
     }
 
     // Trivy 스캔 실행 (v0.29.2: --security-checks 사용)
-    $command = "trivy image --security-checks $securityChecks --format json $safeTarget 2>&1";
+    // 2>/dev/null로 INFO 로그 제거, JSON만 캡처
+    $command = "trivy image --security-checks $securityChecks --format json $safeTarget 2>/dev/null";
     exec($command, $output, $resultCode);
 
     $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
     $data = json_decode($jsonOutput, true);
 
     return [
-        'success' => $data !== null && $resultCode === 0,
+        'success' => $data !== null,
         'data' => $data,
         'raw' => $jsonOutput,
         'target' => $target,

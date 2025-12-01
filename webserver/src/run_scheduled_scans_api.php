@@ -29,13 +29,20 @@ foreach ($dueScans as $scan) {
     
     // Trivy 스캔 실행 (v0.29.2 호환)
     $safeTarget = escapeshellarg($imageName);
-    $command = "trivy image --security-checks vuln,config --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
-    
+    $command = "trivy image --security-checks vuln,config --severity HIGH,CRITICAL --format json $safeTarget 2>/dev/null";
+
     exec($command, $output, $resultCode);
-    
+
     $jsonOutput = implode("\n", $output);
-    $data = json_decode($jsonOutput, true);
     $output = []; // 다음 스캔을 위해 초기화
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
+    $data = json_decode($jsonOutput, true);
 
     if ($data === null) {
         // 스캔 실패해도 다음 실행 시간 업데이트

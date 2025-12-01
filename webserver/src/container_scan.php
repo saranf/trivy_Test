@@ -34,6 +34,13 @@ function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL', $scanSecrets = t
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
     $data = json_decode($jsonOutput, true);
 
     if ($data === null) {
@@ -278,11 +285,18 @@ function scanContainerWithData($imageOrId, $severity = 'HIGH,CRITICAL') {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy v0.29.2 호환: --no-progress 제거
+    // Trivy v0.29.2 호환
     $command = "trivy image --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
     $data = json_decode($jsonOutput, true);
 
     if ($data === null) {

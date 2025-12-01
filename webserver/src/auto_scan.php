@@ -37,8 +37,15 @@ function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {
     // Trivy v0.29.2: --security-checks 사용 (신버전의 --scanners 대신)
     $command = "trivy image --security-checks vuln,config --severity $safeSeverity --format json $safeImage 2>/dev/null";
     exec($command, $output, $result_code);
-    
+
     $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
     return json_decode($jsonOutput, true);
 }
 
