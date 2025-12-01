@@ -871,3 +871,52 @@ deny[msg] {
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+Future Roadmap (1-Year Plan)
+
+Phase 1: 확장성 확보 (Scalability & Multi-Target)
+"어디서든, 무엇이든 스캔하는 분산 아키텍처"
+
+[ ] Agent 아키텍처 도입: 중앙 서버와 실행 유닛(Scanner) 분리
+
+csop-agent: 원격 서버에서 독립적으로 스캔 수행 후 결과 전송
+
+방화벽 내부/외부망 통합 관제 지원
+
+[ ] AWS 클라우드 자산 연동
+
+AWS ECR (이미지 레지스트리) 자동 스캔
+
+EC2 인스턴스 및 Security Group 보안 점검
+
+IAM Role 기반의 안전한 권한 위임
+
+Phase 2: 인프라 대전환 (Kubernetes Native)
+"컨테이너 오케스트레이션 표준 준수"
+
+[ ] Kubernetes 마이그레이션
+
+Docker Compose → K8s Manifest (Deployment, StatefulSet) 변환
+
+Helm Chart 패키징을 통한 원클릭 배포 지원
+
+[ ] GitOps 파이프라인 구축
+
+ArgoCD 도입으로 선언적(Declarative) 인프라 관리
+
+코드 변경 시 자동 배포 및 동기화 구현
+
+Phase 3: 심층 방어 및 리포팅 (Deep Security)
+"탐지를 넘어 방어와 감시로"
+
+[ ] Admission Controller 통합 (Kyverno)
+
+K8s 배포 시 CSOP 스캔 결과를 조회하여 위험한 파드 생성 차단
+
+"Shift-Left" 보안의 완성
+
+[ ] 커스텀 리포팅 엔진 개발
+
+경영진 보고용 PDF/HTML 리포트 생성기
+
+주간/월간 보안 트렌드 분석 리포트 자동화
