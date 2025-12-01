@@ -138,6 +138,21 @@ function initDatabase($conn) {
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
 
+    // AI 추천 결과 테이블 (Gemini API)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS ai_recommendations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            scan_id INT NOT NULL,
+            recommendation_type ENUM('container', 'cve') DEFAULT 'container',
+            cve_id VARCHAR(50) DEFAULT NULL,
+            recommendation TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (scan_id) REFERENCES scan_history(id) ON DELETE CASCADE,
+            INDEX idx_scan_id (scan_id),
+            INDEX idx_cve (cve_id)
+        )
+    ");
+
     // 사용자 테이블 (RBAC) - demo 역할 포함
     $conn->query("
         CREATE TABLE IF NOT EXISTS users (
@@ -293,6 +308,56 @@ function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
     updateVulnerabilityLifecycle($conn, $imageName, $vulns);
 
     return $scanId;
+}
+
+// =====================================================
+// AI 추천 관련 함수들 (Gemini API)
+// =====================================================
+
+// AI 추천 저장
+function saveAiRecommendation($conn, $scanId, $type, $recommendation, $cveId = null) {
+    $stmt = $conn->prepare("INSERT INTO ai_recommendations (scan_id, recommendation_type, cve_id, recommendation) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isss", $scanId, $type, $cveId, $recommendation);
+    $stmt->execute();
+    $id = $conn->insert_id;
+    $stmt->close();
+    return $id;
+}
+
+// 스캔 ID로 AI 추천 조회
+function getAiRecommendations($conn, $scanId) {
+    $stmt = $conn->prepare("SELECT * FROM ai_recommendations WHERE scan_id = ? ORDER BY created_at DESC");
+    $stmt->bind_param("i", $scanId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $recommendations = [];
+    while ($row = $result->fetch_assoc()) {
+        $recommendations[] = $row;
+    }
+    $stmt->close();
+    return $recommendations;
+}
+
+// 컨테이너 전체 추천 조회
+function getContainerAiRecommendation($conn, $scanId) {
+    $stmt = $conn->prepare("SELECT recommendation FROM ai_recommendations WHERE scan_id = ? AND recommendation_type = 'container' LIMIT 1");
+    $stmt->bind_param("i", $scanId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+    return $row ? $row['recommendation'] : null;
+}
+
+// CVE별 추천 조회
+function getCveAiRecommendation($conn, $scanId, $cveId) {
+    $stmt = $conn->prepare("SELECT recommendation FROM ai_recommendations WHERE scan_id = ? AND cve_id = ? LIMIT 1");
+    $stmt->bind_param("is", $scanId, $cveId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+    return $row ? $row['recommendation'] : null;
 }
 
 // 취약점 생명주기 업데이트 (MTTR 계산용)

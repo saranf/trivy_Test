@@ -232,6 +232,48 @@ IaC 파일의 보안 설정 오류 탐지:
 
 ---
 
+## 🤖 AI 취약점 조치 추천 (Gemini API)
+
+Google Gemini AI를 활용하여 취약점에 대한 조치 방법을 자동으로 추천받을 수 있습니다.
+
+### 기능
+
+| 기능 | 설명 |
+|------|------|
+| **컨테이너 전체 분석** | 스캔 결과에서 🤖AI 버튼 클릭 → 전체 취약점 우선순위 및 조치 방법 제안 |
+| **개별 CVE 분석** | 상세 화면에서 각 CVE의 🤖 버튼 클릭 → 해당 CVE 조치 방법 제안 |
+| **결과 캐싱** | AI 분석 결과는 DB에 저장되어 재사용 (API 비용 절감) |
+| **다시 분석** | "🔄 다시 분석" 버튼으로 최신 정보 반영 |
+
+### 설정 방법
+
+1. Google AI Studio에서 API Key 발급: https://aistudio.google.com/apikey
+2. `.env` 파일 또는 환경변수 설정:
+```bash
+export GEMINI_API_KEY=your-api-key-here
+```
+
+3. docker-compose 재시작:
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+### AI 분석 내용
+
+**컨테이너 전체 분석:**
+- 🔴 즉시 조치 필요 (CRITICAL 취약점)
+- 🟠 우선 조치 권장 (HIGH 취약점)
+- 📋 종합 권장사항
+- ⚡ 빠른 조치 명령어
+
+**개별 CVE 분석:**
+- 조치 방법 (업그레이드 경로)
+- 임시 완화 방법
+- 위험도 설명
+
+---
+
 ## 📁 파일 구조
 
 ```
@@ -258,7 +300,9 @@ trivy_Test/
 │       ├── sbom_download.php     # 📦 SBOM 다운로드 API
 │       ├── security_dashboard.php # 🛡️ 보안 진단 대시보드
 │       ├── runtime_audit.php     # 🔒 런타임 보안 감사
-│       └── reset_demo.php        # 🔄 데모 환경 초기화 스크립트
+│       ├── reset_demo.php        # 🔄 데모 환경 초기화 스크립트
+│       ├── ai_analysis.php       # 🤖 AI 취약점 분석 API
+│       └── gemini_api.php        # 🤖 Gemini API 연동
 ├── grafana/
 │   └── provisioning/
 │       ├── datasources/

@@ -126,6 +126,7 @@ if (isDemoMode()) {
         .btn-sbom { background: #4ade80; color: #1a1a2e; font-weight: bold; }
         .btn-delete { background: #dc3545; color: white; }
         .btn-detail { background: #007bff; color: white; }
+        .btn-ai { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .no-data { text-align: center; padding: 40px; color: #666; }
         .tag { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; white-space: nowrap; }
         .tag-manual { background: #e3f2fd; color: #1565c0; }
@@ -227,6 +228,7 @@ if (isDemoMode()) {
                         <td><span class="badge low"><?= $h['low_count'] ?></span></td>
                         <td class="actions-cell">
                             <button class="btn btn-detail" onclick="showDetail(<?= $h['id'] ?>)">상세</button>
+                            <button class="btn btn-ai" onclick="showAiAnalysis(<?= $h['id'] ?>, '<?= htmlspecialchars(addslashes($h['image_name'])) ?>')" title="AI 조치 추천">🤖AI</button>
                             <a href="?action=csv&id=<?= $h['id'] ?>" class="btn btn-csv">CSV</a>
                             <a href="sbom_download.php?scan_id=<?= $h['id'] ?>&format=cyclonedx" class="btn btn-sbom" title="SBOM 다운로드">📦SBOM</a>
                             <a href="?action=delete&id=<?= $h['id'] ?>" class="btn btn-delete" onclick="return confirm('삭제하시겠습니까?')">삭제</a>
@@ -324,11 +326,14 @@ if (isDemoMode()) {
             }
         }
 
+        let currentDetailScanId = null;
+
         async function showDetail(scanId) {
+            currentDetailScanId = scanId;
             const res = await fetch('?action=detail&id=' + scanId);
             const data = await res.json();
 
-            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>상태</th></tr></thead><tbody>';
+            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>상태/AI</th></tr></thead><tbody>';
             data.forEach(v => {
                 const badgeClass = v.severity.toLowerCase();
                 const isExcepted = v.excepted === true;
@@ -340,12 +345,14 @@ if (isDemoMode()) {
                     statusCell = `<span style="display:inline-block;background:#1976d2;color:white;padding:3px 8px;border-radius:12px;font-size:11px;">🛡️ 예외</span>
                         <br><small style="color:#666;">~${expiresDate}</small>`;
                 } else {
-                    statusCell = `<button class="btn" style="background:#6c757d;font-size:11px;" onclick="showExceptionModal('${v.vulnerability}', '${v.library}')">예외 등록</button>`;
+                    statusCell = `<button class="btn" style="background:#6c757d;font-size:11px;" onclick="showExceptionModal('${v.vulnerability}', '${v.library}')">예외</button>`;
                 }
+                // AI 분석 버튼 추가
+                statusCell += ` <button class="btn btn-ai" style="font-size:11px;padding:3px 6px;" onclick="showCveAiAnalysis(${scanId}, '${v.vulnerability}')" title="AI 조치 추천">🤖</button>`;
 
                 html += `<tr style="${rowStyle}">
                     <td>${v.library}</td>
-                    <td>${v.vulnerability}</td>
+                    <td><a href="https://nvd.nist.gov/vuln/detail/${v.vulnerability}" target="_blank" style="color:#007bff;">${v.vulnerability}</a></td>
                     <td><span class="badge ${badgeClass}">${v.severity}</span></td>
                     <td>${v.installed_version}</td>
                     <td>${v.fixed_version || '-'}</td>
@@ -358,6 +365,28 @@ if (isDemoMode()) {
             document.getElementById('modal').style.display = 'block';
         }
 
+        // CVE별 AI 분석
+        async function showCveAiAnalysis(scanId, cveId) {
+            document.getElementById('aiImageName').textContent = '🔒 CVE: ' + cveId;
+            document.getElementById('aiContent').innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #667eea;border-radius:50%;animation:spin 1s linear infinite;"></div><br><br>🤖 AI가 조치 방법을 분석하고 있습니다...</div>';
+            document.getElementById('aiModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`ai_analysis.php?action=analyze_cve&scan_id=${scanId}&cve_id=${encodeURIComponent(cveId)}`);
+                const data = await res.json();
+
+                if (data.success) {
+                    const formatted = formatAiResponse(data.recommendation);
+                    const cacheNote = data.cached ? '<small style="color:#999;">(캐시된 결과)</small>' : '<small style="color:#28a745;">(새로 분석됨)</small>';
+                    document.getElementById('aiContent').innerHTML = formatted + '<br>' + cacheNote;
+                } else {
+                    document.getElementById('aiContent').innerHTML = '<div style="color:#dc3545;"><strong>❌ 분석 실패</strong><br><br>' + data.error + '</div>';
+                }
+            } catch (e) {
+                document.getElementById('aiContent').innerHTML = '<div style="color:#dc3545;">❌ 오류: ' + e.message + '</div>';
+            }
+        }
+
         function closeModal() {
             document.getElementById('modal').style.display = 'none';
         }
@@ -366,6 +395,66 @@ if (isDemoMode()) {
             if (e.target == document.getElementById('modal')) closeModal();
             if (e.target == document.getElementById('emailModal')) closeEmailModal();
             if (e.target == document.getElementById('exceptionModal')) closeExceptionModal();
+            if (e.target == document.getElementById('aiModal')) closeAiModal();
+        }
+
+        // AI 분석 관련
+        let currentAiScanId = null;
+        let currentAiImageName = null;
+
+        async function showAiAnalysis(scanId, imageName) {
+            currentAiScanId = scanId;
+            currentAiImageName = imageName;
+            document.getElementById('aiImageName').textContent = '📦 이미지: ' + imageName;
+            document.getElementById('aiContent').innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #667eea;border-radius:50%;animation:spin 1s linear infinite;"></div><br><br>🤖 AI가 취약점을 분석하고 있습니다...</div><style>@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>';
+            document.getElementById('aiModal').style.display = 'block';
+
+            await fetchAiAnalysis(scanId, false);
+        }
+
+        async function fetchAiAnalysis(scanId, forceRefresh) {
+            try {
+                let url = 'ai_analysis.php?action=analyze_container&scan_id=' + scanId;
+                if (forceRefresh) url += '&refresh=1';
+
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.success) {
+                    const formatted = formatAiResponse(data.recommendation);
+                    const cacheNote = data.cached ? '<small style="color:#999;">(캐시된 결과)</small>' : '<small style="color:#28a745;">(새로 분석됨)</small>';
+                    document.getElementById('aiContent').innerHTML = formatted + '<br>' + cacheNote;
+                } else {
+                    document.getElementById('aiContent').innerHTML = '<div style="color:#dc3545;"><strong>❌ 분석 실패</strong><br><br>' + data.error + '<br><br><small>💡 Tip: GEMINI_API_KEY 환경변수가 설정되어 있는지 확인하세요.</small></div>';
+                }
+            } catch (e) {
+                document.getElementById('aiContent').innerHTML = '<div style="color:#dc3545;">❌ 오류: ' + e.message + '</div>';
+            }
+        }
+
+        function formatAiResponse(text) {
+            // 마크다운 스타일 변환
+            return text
+                .replace(/## 🔴/g, '<h3 style="color:#dc3545;margin-top:20px;">🔴')
+                .replace(/## 🟠/g, '<h3 style="color:#fd7e14;margin-top:20px;">🟠')
+                .replace(/## 📋/g, '<h3 style="color:#007bff;margin-top:20px;">📋')
+                .replace(/## ⚡/g, '<h3 style="color:#28a745;margin-top:20px;">⚡')
+                .replace(/##/g, '</h3><h3>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`(.*?)`/g, '<code style="background:#e9ecef;padding:2px 6px;border-radius:3px;">$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+
+        async function refreshAiAnalysis() {
+            if (!currentAiScanId) return;
+            document.getElementById('aiContent').innerHTML = '<div style="text-align:center;padding:40px;">🔄 다시 분석 중...</div>';
+
+            // 캐시 삭제 후 재분석 (서버에서 처리)
+            await fetchAiAnalysis(currentAiScanId, true);
+        }
+
+        function closeAiModal() {
+            document.getElementById('aiModal').style.display = 'none';
         }
 
         // 예외 처리 모달
@@ -425,6 +514,19 @@ if (isDemoMode()) {
             }
         }
     </script>
+
+    <!-- AI 분석 모달 -->
+    <div id="aiModal" class="modal">
+        <div class="modal-content" style="max-width:800px;">
+            <span class="modal-close" onclick="closeAiModal()">&times;</span>
+            <h2>🤖 AI 취약점 조치 추천</h2>
+            <p id="aiImageName" style="color:#666;"></p>
+            <div id="aiContent" style="padding:20px;background:#f8f9fa;border-radius:8px;min-height:200px;white-space:pre-wrap;line-height:1.8;"></div>
+            <div style="margin-top:15px;text-align:center;">
+                <button class="btn btn-detail" onclick="refreshAiAnalysis()" id="aiRefreshBtn">🔄 다시 분석</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 예외 처리 모달 -->
     <div id="exceptionModal" class="email-modal">
