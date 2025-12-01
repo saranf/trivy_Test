@@ -123,6 +123,7 @@ if (isDemoMode()) {
         .low { background: #28a745; }
         .btn { display: inline-block; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 12px; margin: 2px; white-space: nowrap; }
         .btn-csv { background: #28a745; color: white; }
+        .btn-sbom { background: #4ade80; color: #1a1a2e; font-weight: bold; }
         .btn-delete { background: #dc3545; color: white; }
         .btn-detail { background: #007bff; color: white; }
         .no-data { text-align: center; padding: 40px; color: #666; }
@@ -227,6 +228,7 @@ if (isDemoMode()) {
                         <td class="actions-cell">
                             <button class="btn btn-detail" onclick="showDetail(<?= $h['id'] ?>)">상세</button>
                             <a href="?action=csv&id=<?= $h['id'] ?>" class="btn btn-csv">CSV</a>
+                            <a href="sbom_download.php?scan_id=<?= $h['id'] ?>&format=cyclonedx" class="btn btn-sbom" title="SBOM 다운로드">📦SBOM</a>
                             <a href="?action=delete&id=<?= $h['id'] ?>" class="btn btn-delete" onclick="return confirm('삭제하시겠습니까?')">삭제</a>
                         </td>
                     </tr>

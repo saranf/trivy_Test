@@ -365,6 +365,13 @@ $containers = getRunningContainers();
             <button onclick="saveResult()" id="saveBtn" style="background:#28a745;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;">💾 저장하기</button>
             <button onclick="hideSaveArea()" style="background:#6c757d;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;margin-left:10px;">취소</button>
         </div>
+
+        <!-- SBOM 다운로드 영역 -->
+        <div id="sbomArea" style="display:none; margin-top:20px; padding:15px; background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius:8px; text-align:center;">
+            <p style="margin:0 0 10px 0; color:#4ade80;">📦 SBOM (Software Bill of Materials) 다운로드</p>
+            <button onclick="downloadSbom('cyclonedx')" style="background:#4ade80;color:#1a1a2e;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;">📄 CycloneDX</button>
+            <button onclick="downloadSbom('spdx-json')" style="background:#60a5fa;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;margin-left:10px;">📄 SPDX</button>
+        </div>
         <div id="saveMessage" style="display:none; margin-top:10px; padding:10px; border-radius:4px; text-align:center;"></div>
 
         <!-- Grafana 링크 영역 -->
@@ -404,11 +411,14 @@ $containers = getRunningContainers();
                 const result = await response.json();
                 resultDiv.innerHTML = marked.parse(result.markdown);
 
-                // 스캔 성공 시 저장 버튼 및 Grafana 링크 표시
+                // 스캔 성공 시 저장 버튼, SBOM, Grafana 링크 표시
                 if (result.success && result.data) {
                     lastScanData = result.data;
                     lastScanTarget = result.target;
                     saveArea.style.display = 'block';
+
+                    // SBOM 다운로드 영역 표시
+                    document.getElementById('sbomArea').style.display = 'block';
 
                     // Grafana 링크 표시
                     const grafanaArea = document.getElementById('grafanaArea');
@@ -483,6 +493,16 @@ $containers = getRunningContainers();
             }
             // 이미지 이름에서 컨테이너 이름 추정
             return imageOrName.replace(/[/:]/g, '_');
+        }
+
+        // SBOM 다운로드
+        function downloadSbom(format) {
+            if (!lastScanTarget) {
+                alert('먼저 스캔을 수행해주세요.');
+                return;
+            }
+            const url = `sbom_download.php?image=${encodeURIComponent(lastScanTarget)}&format=${format}`;
+            window.location.href = url;
         }
     </script>
 </body>
