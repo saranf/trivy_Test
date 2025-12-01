@@ -7,7 +7,7 @@
 
 // Gemini API 설정
 define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: '');
-define('GEMINI_MODEL', 'gemini-1.5-flash');
+define('GEMINI_MODEL', 'gemini-2.0-flash');  // 최신 무료 모델
 define('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent');
 
 /**
@@ -51,7 +51,7 @@ function callGeminiApi($prompt, $maxTokens = 2048) {
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
-    curl_close($ch);
+    // curl_close는 PHP 8.0+에서 자동 처리되므로 제거
 
     if ($error) {
         return ['success' => false, 'error' => "cURL 오류: $error"];
@@ -59,7 +59,7 @@ function callGeminiApi($prompt, $maxTokens = 2048) {
 
     if ($httpCode !== 200) {
         $errorData = json_decode($response, true);
-        $errorMsg = $errorData['error']['message'] ?? "HTTP $httpCode";
+        $errorMsg = $errorData['error']['message'] ?? "HTTP $httpCode - Response: " . substr($response, 0, 200);
         return ['success' => false, 'error' => "API 오류: $errorMsg"];
     }
 

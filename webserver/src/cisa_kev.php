@@ -38,8 +38,8 @@ function getKevData($forceRefresh = false) {
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
+    // curl_close는 PHP 8.0+에서 자동 처리되므로 제거
+
     if ($httpCode !== 200 || !$response) {
         // 실패시 캐시된 데이터 반환 (있으면)
         if (file_exists(KEV_CACHE_FILE)) {
