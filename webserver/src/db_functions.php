@@ -15,6 +15,12 @@ function getDbConnection() {
     }
 }
 
+// 컬럼 존재 여부 확인
+function columnExists($conn, $table, $column) {
+    $result = $conn->query("SHOW COLUMNS FROM $table LIKE '$column'");
+    return $result && $result->num_rows > 0;
+}
+
 // 테이블 생성
 function initDatabase($conn) {
     // 스캔 기록 테이블
@@ -32,8 +38,10 @@ function initDatabase($conn) {
         )
     ");
 
-    // 기존 테이블에 scan_source 컬럼 추가
-    $conn->query("ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS scan_source VARCHAR(20) DEFAULT 'manual'");
+    // 기존 테이블에 scan_source 컬럼 추가 (없는 경우만)
+    if (!columnExists($conn, 'scan_history', 'scan_source')) {
+        $conn->query("ALTER TABLE scan_history ADD COLUMN scan_source VARCHAR(20) DEFAULT 'manual'");
+    }
 
     // 취약점 상세 테이블
     $conn->query("
@@ -50,10 +58,10 @@ function initDatabase($conn) {
         )
     ");
 
-    // 기존 테이블 컬럼 크기 수정 (이미 테이블이 있는 경우)
-    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY library VARCHAR(500)");
-    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
-    $conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
+    // 기존 테이블 컬럼 크기 수정 (이미 테이블이 있는 경우) - 에러 무시
+    @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY library VARCHAR(500)");
+    @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
+    @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
 }
 
 // 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk')
