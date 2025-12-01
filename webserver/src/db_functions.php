@@ -107,38 +107,45 @@ function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
 
 // 스캔 기록 목록 조회 (검색 지원)
 function getScanHistory($conn, $search = '', $source = '') {
-    $sql = "SELECT * FROM scan_history WHERE 1=1";
-    $params = [];
-    $types = '';
+    try {
+        $sql = "SELECT * FROM scan_history WHERE 1=1";
+        $params = [];
+        $types = '';
 
-    if (!empty($search)) {
-        $sql .= " AND image_name LIKE ?";
-        $params[] = "%$search%";
-        $types .= 's';
+        if (!empty($search)) {
+            $sql .= " AND image_name LIKE ?";
+            $params[] = "%$search%";
+            $types .= 's';
+        }
+
+        if (!empty($source)) {
+            $sql .= " AND scan_source = ?";
+            $params[] = $source;
+            $types .= 's';
+        }
+
+        $sql .= " ORDER BY scan_date DESC LIMIT 100";
+
+        if (!empty($params)) {
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) return [];
+            $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $result = $stmt->get_result();
+        } else {
+            $result = $conn->query($sql);
+        }
+
+        if (!$result) return [];
+
+        $history = [];
+        while ($row = $result->fetch_assoc()) {
+            $history[] = $row;
+        }
+        return $history;
+    } catch (Exception $e) {
+        return [];
     }
-
-    if (!empty($source)) {
-        $sql .= " AND scan_source = ?";
-        $params[] = $source;
-        $types .= 's';
-    }
-
-    $sql .= " ORDER BY scan_date DESC LIMIT 100";
-
-    if (!empty($params)) {
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $result = $stmt->get_result();
-    } else {
-        $result = $conn->query($sql);
-    }
-
-    $history = [];
-    while ($row = $result->fetch_assoc()) {
-        $history[] = $row;
-    }
-    return $history;
 }
 
 // 특정 스캔의 취약점 조회

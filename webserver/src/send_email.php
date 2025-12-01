@@ -10,13 +10,13 @@ header('Content-Type: application/json');
 
 require_once 'db_functions.php';
 
-// SMTP 설정 (환경변수 또는 기본값)
-$smtpHost = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
-$smtpPort = getenv('SMTP_PORT') ?: 587;
-$smtpUser = getenv('SMTP_USER') ?: '';
-$smtpPass = getenv('SMTP_PASS') ?: '';
-$fromEmail = getenv('FROM_EMAIL') ?: $smtpUser;
-$fromName = getenv('FROM_NAME') ?: 'Trivy Scanner';
+// SMTP 설정 (환경변수 또는 기본값) - MailHog 사용
+$smtpConfig = [
+    'host' => getenv('SMTP_HOST') ?: 'mailhog',
+    'port' => (int)(getenv('SMTP_PORT') ?: 1025),
+    'from' => getenv('FROM_EMAIL') ?: 'scanner@trivy.local',
+    'fromName' => getenv('FROM_NAME') ?: 'Trivy Scanner'
+];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'POST method required']);
@@ -69,7 +69,7 @@ if (empty($scans)) {
 $html = generateEmailHtml($scans);
 
 // 이메일 발송
-$result = sendEmail($toEmail, $subject, $html, $smtpHost, $smtpPort, $smtpUser, $smtpPass, $fromEmail, $fromName);
+$result = sendEmailSmtp($toEmail, $subject, $html, $smtpConfig);
 
 echo json_encode($result);
 
@@ -124,96 +124,141 @@ function generateEmailHtml($scans) {
     return $html;
 }
 
-function sendEmail($to, $subject, $html, $host, $port, $user, $pass, $from, $fromName) {
-    // PHPMailer 없이 기본 mail() 사용 또는 socket으로 SMTP
+function sendEmailSmtp($to, $subject, $html, $config) {
+    $host = $config['host'];
+    $port = $config['port'];
+    $user = $config['user'];
+    $pass = $config['pass'];
+    $from = $config['from'] ?: $user;
+    $fromName = $config['fromName'];
+
+    // SMTP 설정 확인
     if (empty($user) || empty($pass)) {
-        // 기본 mail() 함수 사용
-        $headers = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: $fromName <$from>\r\n";
-        
-        if (mail($to, $subject, $html, $headers)) {
-            return ['success' => true, 'message' => '이메일이 발송되었습니다.'];
+        return ['success' => false, 'message' => 'SMTP 설정이 필요합니다. docker-compose.yml에서 SMTP_USER, SMTP_PASS를 설정하세요.'];
+    }
+
+    try {
+        // SSL/TLS 직접 연결 (포트 465) 또는 STARTTLS (포트 587)
+        if ($port == 465) {
+            $socket = @fsockopen("ssl://$host", $port, $errno, $errstr, 30);
         } else {
-            return ['success' => false, 'message' => '이메일 발송 실패. SMTP 설정을 확인하세요.'];
+            $socket = @fsockopen($host, $port, $errno, $errstr, 30);
         }
-    }
-    
-    // SMTP 발송 (간단한 구현)
-    return sendSmtpEmail($to, $subject, $html, $host, $port, $user, $pass, $from, $fromName);
-}
 
-function sendSmtpEmail($to, $subject, $body, $host, $port, $user, $pass, $from, $fromName) {
-    $socket = @fsockopen($host, $port, $errno, $errstr, 30);
-    if (!$socket) {
-        return ['success' => false, 'message' => "SMTP 연결 실패: $errstr"];
-    }
+        if (!$socket) {
+            return ['success' => false, 'message' => "SMTP 연결 실패: $errstr ($errno)"];
+        }
 
-    stream_set_timeout($socket, 30);
+        stream_set_timeout($socket, 30);
 
-    $response = fgets($socket, 515);
+        // 서버 응답 읽기
+        $response = fgets($socket, 515);
+        if (substr($response, 0, 3) != '220') {
+            fclose($socket);
+            return ['success' => false, 'message' => "SMTP 서버 응답 오류: $response"];
+        }
 
-    // EHLO
-    fputs($socket, "EHLO localhost\r\n");
-    while ($line = fgets($socket, 515)) {
-        if (substr($line, 3, 1) == ' ') break;
-    }
+        // EHLO
+        fputs($socket, "EHLO localhost\r\n");
+        $ehloResponse = '';
+        while ($line = fgets($socket, 515)) {
+            $ehloResponse .= $line;
+            if (substr($line, 3, 1) == ' ') break;
+        }
 
-    // STARTTLS
-    fputs($socket, "STARTTLS\r\n");
-    fgets($socket, 515);
+        // STARTTLS (포트 587인 경우)
+        if ($port == 587) {
+            fputs($socket, "STARTTLS\r\n");
+            $starttlsResponse = fgets($socket, 515);
+            if (substr($starttlsResponse, 0, 3) != '220') {
+                fclose($socket);
+                return ['success' => false, 'message' => "STARTTLS 실패: $starttlsResponse"];
+            }
 
-    stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+            // TLS 활성화
+            $crypto = stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT);
+            if (!$crypto) {
+                fclose($socket);
+                return ['success' => false, 'message' => 'TLS 암호화 활성화 실패'];
+            }
 
-    fputs($socket, "EHLO localhost\r\n");
-    while ($line = fgets($socket, 515)) {
-        if (substr($line, 3, 1) == ' ') break;
-    }
+            // TLS 후 다시 EHLO
+            fputs($socket, "EHLO localhost\r\n");
+            while ($line = fgets($socket, 515)) {
+                if (substr($line, 3, 1) == ' ') break;
+            }
+        }
 
-    // AUTH LOGIN
-    fputs($socket, "AUTH LOGIN\r\n");
-    fgets($socket, 515);
+        // AUTH LOGIN
+        fputs($socket, "AUTH LOGIN\r\n");
+        $authResponse = fgets($socket, 515);
+        if (substr($authResponse, 0, 3) != '334') {
+            fclose($socket);
+            return ['success' => false, 'message' => "AUTH 시작 실패: $authResponse"];
+        }
 
-    fputs($socket, base64_encode($user) . "\r\n");
-    fgets($socket, 515);
+        fputs($socket, base64_encode($user) . "\r\n");
+        $userResponse = fgets($socket, 515);
+        if (substr($userResponse, 0, 3) != '334') {
+            fclose($socket);
+            return ['success' => false, 'message' => "사용자명 인증 실패: $userResponse"];
+        }
 
-    fputs($socket, base64_encode($pass) . "\r\n");
-    $authResponse = fgets($socket, 515);
+        fputs($socket, base64_encode($pass) . "\r\n");
+        $passResponse = fgets($socket, 515);
+        if (substr($passResponse, 0, 3) != '235') {
+            fclose($socket);
+            return ['success' => false, 'message' => 'SMTP 인증 실패. 앱 비밀번호를 확인하세요.'];
+        }
 
-    if (substr($authResponse, 0, 3) != '235') {
+        // MAIL FROM
+        fputs($socket, "MAIL FROM:<$from>\r\n");
+        $mailFromResponse = fgets($socket, 515);
+        if (substr($mailFromResponse, 0, 3) != '250') {
+            fclose($socket);
+            return ['success' => false, 'message' => "MAIL FROM 실패: $mailFromResponse"];
+        }
+
+        // RCPT TO
+        fputs($socket, "RCPT TO:<$to>\r\n");
+        $rcptResponse = fgets($socket, 515);
+        if (substr($rcptResponse, 0, 3) != '250') {
+            fclose($socket);
+            return ['success' => false, 'message' => "RCPT TO 실패: $rcptResponse"];
+        }
+
+        // DATA
+        fputs($socket, "DATA\r\n");
+        $dataStartResponse = fgets($socket, 515);
+        if (substr($dataStartResponse, 0, 3) != '354') {
+            fclose($socket);
+            return ['success' => false, 'message' => "DATA 시작 실패: $dataStartResponse"];
+        }
+
+        // 이메일 헤더 및 본문
+        $message = "From: $fromName <$from>\r\n";
+        $message .= "To: $to\r\n";
+        $message .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+        $message .= "MIME-Version: 1.0\r\n";
+        $message .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $message .= "Date: " . date('r') . "\r\n";
+        $message .= "\r\n";
+        $message .= $html;
+        $message .= "\r\n.\r\n";
+
+        fputs($socket, $message);
+        $dataResponse = fgets($socket, 515);
+
+        fputs($socket, "QUIT\r\n");
         fclose($socket);
-        return ['success' => false, 'message' => 'SMTP 인증 실패'];
-    }
 
-    // MAIL FROM
-    fputs($socket, "MAIL FROM:<$from>\r\n");
-    fgets($socket, 515);
-
-    // RCPT TO
-    fputs($socket, "RCPT TO:<$to>\r\n");
-    fgets($socket, 515);
-
-    // DATA
-    fputs($socket, "DATA\r\n");
-    fgets($socket, 515);
-
-    $headers = "From: $fromName <$from>\r\n";
-    $headers .= "To: $to\r\n";
-    $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
-    $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-    $headers .= "\r\n";
-
-    fputs($socket, $headers . $body . "\r\n.\r\n");
-    $dataResponse = fgets($socket, 515);
-
-    fputs($socket, "QUIT\r\n");
-    fclose($socket);
-
-    if (substr($dataResponse, 0, 3) == '250') {
-        return ['success' => true, 'message' => '이메일이 발송되었습니다.'];
-    } else {
-        return ['success' => false, 'message' => '이메일 발송 실패'];
+        if (substr($dataResponse, 0, 3) == '250') {
+            return ['success' => true, 'message' => "이메일이 $to 로 발송되었습니다."];
+        } else {
+            return ['success' => false, 'message' => "이메일 발송 실패: $dataResponse"];
+        }
+    } catch (Exception $e) {
+        return ['success' => false, 'message' => '이메일 발송 중 오류: ' . $e->getMessage()];
     }
 }
 
