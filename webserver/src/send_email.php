@@ -8,6 +8,7 @@ ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
 
+require_once 'auth.php';
 require_once 'db_functions.php';
 
 // 메일 설정
@@ -33,6 +34,18 @@ if (empty($scanIds) || empty($toEmail)) {
 
 if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
     echo json_encode(['success' => false, 'message' => '유효하지 않은 이메일 주소입니다.']);
+    exit;
+}
+
+// 데모 모드: 메일 발송 시뮬레이션
+if (isDemoMode()) {
+    echo json_encode([
+        'success' => true,
+        'message' => '✅ [데모] 이메일이 발송되었습니다. (실제로는 발송되지 않음)',
+        'demo' => true,
+        'to' => $toEmail,
+        'scanCount' => count($scanIds)
+    ]);
     exit;
 }
 

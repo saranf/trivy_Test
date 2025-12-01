@@ -34,6 +34,7 @@ initDatabase($conn);
 </head>
 <body>
     <?= getNavMenu() ?>
+    <?= getDemoBanner() ?>
     <div class="container">
         <h1>🛡️ Container Security Platform</h1>
 

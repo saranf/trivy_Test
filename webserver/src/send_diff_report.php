@@ -23,9 +23,9 @@ if ($isApiCall) {
         exit;
     }
 
-    // Operator 이상 권한
+    // Operator 이상 권한 (demo 포함)
     $userRole = $_SESSION['user']['role'] ?? '';
-    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    $levels = ['viewer' => 1, 'demo' => 2, 'operator' => 2, 'admin' => 3];
     if (($levels[$userRole] ?? 0) < 2) {
         echo json_encode(['success' => false, 'message' => 'Operator 이상 권한이 필요합니다.']);
         exit;
@@ -496,6 +496,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // 데모 모드: 메일 발송 시뮬레이션
+    if (($_SESSION['user']['role'] ?? '') === 'demo') {
+        echo json_encode([
+            'success' => true,
+            'message' => '✅ [데모] Diff 리포트가 발송되었습니다. (실제로는 발송되지 않음)',
+            'demo' => true,
+            'to' => $toEmail,
+            'scanId' => $scanId
+        ]);
+        exit;
+    }
+
     $result = sendDiffReport($scanId, $toEmail, $mailConfig);
 
     // 감사 로그
@@ -515,6 +527,11 @@ if ($conn) {
     initDatabase($conn);
 }
 $scans = $conn ? getScanHistory($conn, '', '') : [];
+
+// 데모 모드: 이미지명 마스킹
+if (function_exists('isDemoMode') && isDemoMode()) {
+    $scans = maskSensitiveData($scans, 'image_name');
+}
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -569,6 +586,7 @@ $scans = $conn ? getScanHistory($conn, '', '') : [];
 </head>
 <body>
     <?= getNavMenu() ?>
+    <?php if (function_exists('getDemoBanner')) echo getDemoBanner(); ?>
     <div class="container">
         <div class="info-box">
             <h2>📊 Diff 기반 지능형 리포트</h2>

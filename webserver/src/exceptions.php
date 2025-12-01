@@ -7,10 +7,12 @@ if ($conn) {
     initDatabase($conn);
 }
 
-// 삭제 처리
+// 삭제 처리 (데모 모드에서는 실제 삭제 안함)
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    deleteException($conn, (int)$_GET['id']);
-    auditLog($conn, 'DELETE_EXCEPTION', 'exception', $_GET['id'], null);
+    if (!isDemoMode()) {
+        deleteException($conn, (int)$_GET['id']);
+        auditLog($conn, 'DELETE_EXCEPTION', 'exception', $_GET['id'], null);
+    }
     header('Location: exceptions.php');
     exit;
 }
@@ -45,6 +47,7 @@ $exceptions = $conn ? getAllExceptions($conn) : [];
 </head>
 <body>
     <?= getNavMenu() ?>
+    <?= getDemoBanner() ?>
     <div class="container">
         <h1>🛡️ 예외 처리 관리 (Risk Acceptance)</h1>
         

@@ -15,10 +15,11 @@ function requireLogin() {
     return $_SESSION['user'];
 }
 
-// 권한 확인 (viewer < operator < admin)
+// 권한 확인 (viewer < demo < operator < admin)
+// demo 역할은 operator 수준의 UI 접근 가능, 단 저장/메일 등 실제 작업 제한
 function requireRole($minRole) {
     $user = requireLogin();
-    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    $levels = ['viewer' => 1, 'demo' => 2, 'operator' => 2, 'admin' => 3];
     $userLevel = $levels[$user['role']] ?? 0;
     $requiredLevel = $levels[$minRole] ?? 99;
 
@@ -46,11 +47,43 @@ function isAdmin() {
 }
 
 function isOperator() {
-    return in_array($_SESSION['user']['role'] ?? '', ['operator', 'admin']);
+    return in_array($_SESSION['user']['role'] ?? '', ['operator', 'admin', 'demo']);
 }
 
 function isViewer() {
     return isset($_SESSION['user']);
+}
+
+// 데모 모드 확인 (면접관용 - 읽기 전용, 민감정보 마스킹)
+function isDemoMode() {
+    return ($_SESSION['user']['role'] ?? '') === 'demo';
+}
+
+// 데모 모드에서 민감 정보 마스킹
+function maskSensitiveData($data, $field = 'image_name') {
+    if (!isDemoMode()) return $data;
+
+    // 이미지명 마스킹 (예: nginx:latest -> demo-image-001)
+    if (is_array($data)) {
+        $counter = 1;
+        foreach ($data as &$item) {
+            if (isset($item[$field])) {
+                $item['original_' . $field] = $item[$field];
+                $item[$field] = 'demo-image-' . str_pad($counter++, 3, '0', STR_PAD_LEFT);
+            }
+        }
+        return $data;
+    }
+    return $data;
+}
+
+// 데모 모드 알림 배너
+function getDemoBanner() {
+    if (!isDemoMode()) return '';
+    return '<div class="demo-banner">
+        🎓 <strong>면접관 체험 모드</strong> - 모든 기능을 체험할 수 있습니다.
+        실제 데이터는 마스킹되어 표시되며, 저장/메일 발송 등 실제 작업은 시뮬레이션됩니다.
+    </div>';
 }
 
 // 로그아웃
@@ -117,6 +150,10 @@ function getAuthStyles() {
     .role-admin { background: #dc3545; color: white; }
     .role-operator { background: #28a745; color: white; }
     .role-viewer { background: #6c757d; color: white; }
+    .role-demo { background: #9c27b0; color: white; }
+    .demo-banner { background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%); color: white; padding: 12px 20px; text-align: center; font-size: 14px; }
+    .demo-banner strong { font-weight: 600; }
+    .demo-mask { background: #f3e5f5; color: #7b1fa2; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-family: monospace; }
     ';
 }
 

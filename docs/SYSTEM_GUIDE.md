@@ -9,20 +9,28 @@
 
 ## 🔐 계정 정보
 
-### 기본 관리자 계정
-| 항목 | 값 |
-|------|-----|
-| **Username** | `admin` |
-| **Password** | `admin123` |
-| **Role** | Admin |
+### 기본 계정
+| 계정 | Username | Password | Role | 용도 |
+|------|----------|----------|------|------|
+| **관리자** | `admin` | `admin123` | Admin | 전체 시스템 관리 |
+| **면접관** | `demo` | `demo123` | Demo | 기능 체험 (읽기 전용) |
 
-### RBAC (Role-Based Access Control) - 3-Tier 구조
+### 🎓 면접관 체험 모드 (Demo Mode)
+
+**demo** 계정으로 로그인하면:
+- ✅ 모든 기능을 안전하게 체험할 수 있음
+- 🔒 실제 데이터(이미지명 등)는 마스킹되어 표시
+- 💾 저장/메일 발송은 시뮬레이션 (실제 동작 안함)
+- 📊 실제 스캔 실행 및 결과 확인 가능
+
+### RBAC (Role-Based Access Control) - 4-Tier 구조
 
 | Tier | Role | 권한 |
 |------|------|------|
-| **Tier 1** | Viewer | Dashboard 조회, 스캔 기록 열람, 이메일 리포트 수신 |
-| **Tier 2** | Operator | Viewer + 수동 스캔, Diff 분석, 예외 처리 관리 |
-| **Tier 3** | Admin | Operator + 사용자 관리, 감사 로그 조회, 시스템 설정 |
+| **Tier 1** | Viewer | Dashboard 조회, 스캔 기록 열람 |
+| **Tier 2** | Demo | Viewer + 스캔/분석 (저장/발송 시뮬레이션) |
+| **Tier 3** | Operator | Demo + 실제 저장/발송, 예외 처리 관리 |
+| **Tier 4** | Admin | Operator + 사용자 관리, 감사 로그 조회, 시스템 설정 |
 
 ---
 
@@ -33,9 +41,10 @@
 | 로그인 | `/login.php` | - |
 | 메인 대시보드 | `/index.php` | Viewer |
 | 스캔 기록 | `/scan_history.php` | Viewer |
-| 컨테이너 스캔 | `/container_scan.php` | Operator |
-| 예외 처리 관리 | `/exceptions.php` | Operator |
-| Diff 리포트 | `/send_diff_report.php` | Operator |
+| 컨테이너 스캔 | `/container_scan.php` | Demo |
+| **컴플라이언스 스캔** | `/config_scan.php` | Demo |
+| 예외 처리 관리 | `/exceptions.php` | Demo |
+| Diff 리포트 | `/send_diff_report.php` | Demo |
 | **주기적 스캔 설정** | `/scheduled_scans.php` | Admin |
 | 사용자 관리 | `/users.php` | Admin |
 | 감사 로그 | `/audit_logs.php` | Admin |

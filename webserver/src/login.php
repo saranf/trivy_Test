@@ -81,7 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .role-admin { background: #dc3545; color: white; }
         .role-operator { background: #28a745; color: white; }
         .role-viewer { background: #6c757d; color: white; }
+        .role-demo { background: #9c27b0; color: white; }
         .role-desc { font-size: 12px; color: #888; margin-top: 10px; }
+        .demo-box { background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%); color: white; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .demo-box h4 { margin: 0 0 10px; font-size: 14px; }
+        .demo-box p { margin: 0; font-size: 12px; line-height: 1.6; }
+        .demo-box code { background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -107,13 +112,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn-login">로그인</button>
         </form>
 
+        <div class="demo-box">
+            <h4>🎓 면접관 체험 모드</h4>
+            <p>
+                모든 기능을 안전하게 체험해 보세요!<br>
+                계정: <code>demo</code> / 비밀번호: <code>demo123</code><br>
+                <small>(실제 데이터는 마스킹되며, 저장/메일 발송은 시뮬레이션됩니다)</small>
+            </p>
+        </div>
+
         <div class="role-info">
             <h3>사용자 권한 안내</h3>
             <span class="role-badge role-admin">Admin</span>
             <span class="role-badge role-operator">Operator</span>
+            <span class="role-badge role-demo">Demo</span>
             <span class="role-badge role-viewer">Viewer</span>
             <p class="role-desc">
-                <strong>Viewer</strong>: 대시보드 조회, 리포트 전송<br>
+                <strong>Viewer</strong>: 대시보드 조회<br>
+                <strong>Demo</strong>: 기능 체험 (저장/발송 시뮬레이션)<br>
                 <strong>Operator</strong>: 스캔 실행, 예외 처리<br>
                 <strong>Admin</strong>: 사용자/시스템 관리
             </p>

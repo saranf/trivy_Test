@@ -207,6 +207,17 @@ if ($action === 'scan') {
 // 저장 API
 if ($action === 'save') {
     header('Content-Type: application/json');
+
+    // 데모 모드: 저장 시뮬레이션
+    if (isDemoMode()) {
+        echo json_encode([
+            'success' => true,
+            'scanId' => 'DEMO-' . rand(1000, 9999),
+            'message' => '✅ [데모] 스캔 결과가 저장되었습니다. (실제로는 저장되지 않음)'
+        ]);
+        exit;
+    }
+
     $input = json_decode(file_get_contents('php://input'), true);
 
     if (!$input || !isset($input['target']) || !isset($input['data'])) {
@@ -284,6 +295,7 @@ $containers = getRunningContainers();
 </head>
 <body>
     <?= getNavMenu() ?>
+    <?= getDemoBanner() ?>
     <div class="container">
         <div class="tabs">
             <a href="container_scan.php" class="tab active">🐳 이미지 스캔</a>

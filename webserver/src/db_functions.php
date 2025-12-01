@@ -167,6 +167,16 @@ function initDatabase($conn) {
         $stmt->close();
     }
 
+    // 면접관용 데모 계정 생성 (비밀번호: demo123)
+    $result = $conn->query("SELECT id FROM users WHERE username = 'demo'");
+    if ($result->num_rows === 0) {
+        $demoPass = password_hash('demo123', PASSWORD_BCRYPT);
+        $stmt = $conn->prepare("INSERT INTO users (username, password_hash, role, email) VALUES ('demo', ?, 'demo', 'demo@interview.local')");
+        $stmt->bind_param("s", $demoPass);
+        $stmt->execute();
+        $stmt->close();
+    }
+
     // 주기적 스캔 설정 테이블
     $conn->query("
         CREATE TABLE IF NOT EXISTS scheduled_scans (

@@ -83,6 +83,11 @@ if ($action === 'detail' && isset($_GET['id'])) {
 $search = $_GET['search'] ?? '';
 $sourceFilter = $_GET['source'] ?? '';
 $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
+
+// 데모 모드: 이미지명 마스킹
+if (isDemoMode()) {
+    $history = maskSensitiveData($history, 'image_name');
+}
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -161,6 +166,7 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
 </head>
 <body>
     <?= getNavMenu() ?>
+    <?= getDemoBanner() ?>
     <div class="container">
         <h1>📋 스캔 기록</h1>
 
