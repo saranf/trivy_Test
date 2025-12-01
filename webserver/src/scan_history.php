@@ -50,7 +50,8 @@ if ($action === 'csv' && isset($_GET['id'])) {
     $output = fopen('php://output', 'w');
     // UTF-8 BOM for Excel compatibility
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title', 'Exception Status', 'Exception Reason', 'Exception Expires'], ',', '"', '\\');
+    // KEV 컬럼 추가
+    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title', 'CISA KEV', 'KEV Due Date', 'Ransomware Related', 'Exception Status', 'Exception Reason', 'Exception Expires'], ',', '"', '\\');
     foreach ($vulns as $v) {
         $exStatus = '';
         $exReason = '';
@@ -60,7 +61,32 @@ if ($action === 'csv' && isset($_GET['id'])) {
             $exReason = $exceptedMap[$v['vulnerability']]['reason'];
             $exExpires = $exceptedMap[$v['vulnerability']]['expires_at'];
         }
-        fputcsv($output, [$v['library'], $v['vulnerability'], $v['severity'], $v['installed_version'], $v['fixed_version'], $v['title'], $exStatus, $exReason, $exExpires], ',', '"', '\\');
+
+        // KEV 정보 추가
+        $kevStatus = '';
+        $kevDueDate = '';
+        $kevRansomware = '';
+        $cveId = $v['vulnerability'] ?? '';
+        if (isset($kevMap[$cveId])) {
+            $kevStatus = 'YES - EXPLOITED';
+            $kevDueDate = $kevMap[$cveId]['dueDate'] ?? '';
+            $kevRansomware = ($kevMap[$cveId]['knownRansomwareCampaignUse'] ?? '') === 'Known' ? 'YES' : 'NO';
+        }
+
+        fputcsv($output, [
+            $v['library'],
+            $v['vulnerability'],
+            $v['severity'],
+            $v['installed_version'],
+            $v['fixed_version'],
+            $v['title'],
+            $kevStatus,
+            $kevDueDate,
+            $kevRansomware,
+            $exStatus,
+            $exReason,
+            $exExpires
+        ], ',', '"', '\\');
     }
     fclose($output);
     exit;
@@ -266,11 +292,13 @@ if (isDemoMode()) {
                         <td><span class="badge medium"><?= $h['medium_count'] ?></span></td>
                         <td><span class="badge low"><?= $h['low_count'] ?></span></td>
                         <td class="actions-cell">
-                            <button class="btn btn-detail" onclick="showDetail(<?= $h['id'] ?>)">상세</button>
+                            <button class="btn btn-detail" onclick="showDetail(<?= $h['id'] ?>)">📋상세</button>
                             <button class="btn btn-ai" onclick="showAiAnalysis(<?= $h['id'] ?>, '<?= htmlspecialchars(addslashes($h['image_name'])) ?>')" title="AI 조치 추천">🤖AI</button>
-                            <a href="?action=csv&id=<?= $h['id'] ?>" class="btn btn-csv">CSV</a>
+                            <a href="?action=csv&id=<?= $h['id'] ?>" class="btn btn-csv" title="CSV 다운로드 (KEV 정보 포함)">📥CSV</a>
                             <a href="sbom_download.php?scan_id=<?= $h['id'] ?>&format=cyclonedx" class="btn btn-sbom" title="SBOM 다운로드">📦SBOM</a>
-                            <a href="?action=delete&id=<?= $h['id'] ?>" class="btn btn-delete" onclick="return confirm('삭제하시겠습니까?')">삭제</a>
+                            <?php if (isOperator()): ?>
+                            <a href="?action=delete&id=<?= $h['id'] ?>" class="btn btn-delete" onclick="return confirm('삭제하시겠습니까?')">🗑️삭제</a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
