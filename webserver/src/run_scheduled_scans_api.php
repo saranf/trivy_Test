@@ -27,9 +27,9 @@ $results = [];
 foreach ($dueScans as $scan) {
     $imageName = $scan['image_name'];
     
-    // Trivy 스캔 실행
+    // Trivy 스캔 실행 (v0.29.2 호환)
     $safeTarget = escapeshellarg($imageName);
-    $command = "trivy image --no-progress --scanners vuln,misconfig --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
+    $command = "trivy image --security-checks vuln,config --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
     
     exec($command, $output, $resultCode);
     

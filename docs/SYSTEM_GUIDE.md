@@ -109,8 +109,15 @@ curl "http://localhost:6987/reset_demo.php?key=trivy_demo_reset_2024"
 ### 3-1. 🔐 시크릿 탐지 (Secret Detection)
 - 이미지 스캔 시 하드코딩된 비밀정보 자동 탐지
 - **탐지 대상**: API 키, 비밀번호, 토큰, 인증서 등
-- Trivy `--scanners secret` 옵션 활용
+- Trivy `--security-checks secret` 옵션 활용 (v0.29.2 호환)
 - 스캔 결과에 별도 섹션으로 표시
+
+### ⚠️ Trivy 버전 호환성
+- **현재 사용 버전**: Trivy v0.29.2
+- **명령어 옵션**:
+  - `--security-checks vuln,config,secret` (v0.29.2)
+  - `--scanners vuln,misconfig,secret` (v0.50+ 신버전)
+- Docker 이미지 빌드 시 Dockerfile에서 버전 고정됨
 
 ### 3-2. 📦 SBOM 다운로드 (Software Bill of Materials)
 - 스캔 완료 후 SBOM 다운로드 버튼 표시

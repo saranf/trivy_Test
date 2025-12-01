@@ -23,14 +23,14 @@ function getRunningContainers() {
     return $containers;
 }
 
-// Trivy 스캔 실행 및 Markdown 변환
+// Trivy 스캔 실행 및 Markdown 변환 (v0.29.2 호환)
 function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL', $scanSecrets = true) {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy 스캔 실행 (취약점 + 설정오류 + 시크릿)
-    $scanners = $scanSecrets ? 'vuln,misconfig,secret' : 'vuln,misconfig';
-    $command = "trivy image --no-progress --scanners $scanners --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    // Trivy v0.29.2: --security-checks 사용 (신버전의 --scanners 대신)
+    $securityChecks = $scanSecrets ? 'vuln,config,secret' : 'vuln,config';
+    $command = "trivy image --security-checks $securityChecks --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
@@ -273,12 +273,13 @@ if ($action === 'save') {
     exit;
 }
 
-// 스캔 + 데이터 반환 함수
+// 스캔 + 데이터 반환 함수 (v0.29.2 호환)
 function scanContainerWithData($imageOrId, $severity = 'HIGH,CRITICAL') {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    $command = "trivy image --no-progress --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    // Trivy v0.29.2 호환: --no-progress 제거
+    $command = "trivy image --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);

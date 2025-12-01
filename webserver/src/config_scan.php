@@ -30,8 +30,8 @@ function scanConfig($path, $severity = 'HIGH,CRITICAL') {
     $safePath = escapeshellarg($path);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy config 스캔 (misconfig만)
-    $command = "trivy config --no-progress --severity $safeSeverity --format json $safePath 2>&1";
+    // Trivy config 스캔 (misconfig만) - v0.29.2 호환
+    $command = "trivy config --severity $safeSeverity --format json $safePath 2>&1";
     exec($command, $output, $resultCode);
 
     $jsonOutput = implode("\n", $output);
@@ -46,25 +46,26 @@ function scanConfig($path, $severity = 'HIGH,CRITICAL') {
 }
 
 // Trivy 보안 검사 (misconfig, secret, vuln)
+// Trivy v0.29.2 호환: --security-checks 사용 (신버전의 --scanners 대신)
 function scanCompliance($target, $scanType = 'security-checks') {
     $safeTarget = escapeshellarg($target);
 
-    // 스캔 유형에 따른 명령어 구성
+    // 스캔 유형에 따른 명령어 구성 (v0.29.2 호환)
     switch ($scanType) {
         case 'secret-scan':
-            $scanners = 'secret';
+            $securityChecks = 'secret';
             break;
         case 'full-scan':
-            $scanners = 'vuln,misconfig,secret';
+            $securityChecks = 'vuln,config,secret';
             break;
         case 'security-checks':
         default:
-            $scanners = 'misconfig,secret';
+            $securityChecks = 'config,secret';
             break;
     }
 
-    // Trivy 스캔 실행
-    $command = "trivy image --scanners $scanners --format json $safeTarget 2>&1";
+    // Trivy 스캔 실행 (v0.29.2: --security-checks 사용)
+    $command = "trivy image --security-checks $securityChecks --format json $safeTarget 2>&1";
     exec($command, $output, $resultCode);
 
     $jsonOutput = implode("\n", $output);

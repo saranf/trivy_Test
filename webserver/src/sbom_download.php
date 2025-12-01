@@ -76,8 +76,8 @@ $extension = ($format === 'spdx-json' || $format === 'spdx') ? 'spdx.json' : 'cd
 // 이미지명 sanitize
 $safeImage = escapeshellarg($imageName);
 
-// Trivy SBOM 생성 명령어 (에러 캡처)
-$command = "trivy image --format $trivyFormat --quiet $safeImage 2>&1";
+// Trivy SBOM 생성 명령어 (v0.29.2 호환 - --quiet 제거)
+$command = "trivy image --format $trivyFormat $safeImage 2>&1";
 
 // 실행
 $output = [];

@@ -29,12 +29,13 @@ require_once 'db_functions.php';
 $ALERT_EMAIL = getenv('ALERT_EMAIL') ?: '';  // 관리자 이메일
 $ALERT_ON_CRITICAL = getenv('ALERT_ON_CRITICAL') !== 'false';  // Critical 알림 활성화
 
-// Trivy 스캔 실행
+// Trivy 스캔 실행 (v0.29.2 호환)
 function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {
     $safeImage = escapeshellarg($image);
     $safeSeverity = escapeshellarg($severity);
-    
-    $command = "trivy image --no-progress --scanners vuln,misconfig --severity $safeSeverity --format json $safeImage 2>/dev/null";
+
+    // Trivy v0.29.2: --security-checks 사용 (신버전의 --scanners 대신)
+    $command = "trivy image --security-checks vuln,config --severity $safeSeverity --format json $safeImage 2>/dev/null";
     exec($command, $output, $result_code);
     
     $jsonOutput = implode("\n", $output);
