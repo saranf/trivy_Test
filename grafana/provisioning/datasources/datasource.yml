@@ -3,6 +3,8 @@ apiVersion: 1
 deleteDatasources:
   - name: Prometheus
     orgId: 1
+  - name: Loki
+    orgId: 1
 
 datasources:
   - name: Prometheus
@@ -17,4 +19,16 @@ datasources:
     jsonData:
       httpMethod: POST
       timeInterval: "15s"
+
+  # 🔭 Loki - 통합 로깅
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    orgId: 1
+    editable: true
+    version: 1
+    jsonData:
+      maxLines: 1000
 

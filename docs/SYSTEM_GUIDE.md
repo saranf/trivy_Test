@@ -208,10 +208,16 @@ trivy_Test/
 │       └── metrics.php           # Prometheus 메트릭
 ├── grafana/
 │   └── provisioning/
+│       ├── datasources/
+│       │   └── datasource.yml  # Prometheus + Loki 설정
 │       └── dashboards/
 │           └── trivy-dashboard.json
 ├── prometheus/
 │   └── prometheus.yml
+├── loki/
+│   └── loki-config.yml       # 🔭 Loki 로그 저장소 설정
+├── promtail/
+│   └── promtail-config.yml   # 🔭 Promtail 로그 수집 설정
 └── auto_scan/
     └── auto_scan_daemon.sh   # Docker 이벤트 감시
 ```
@@ -232,6 +238,52 @@ docker-compose down
 docker volume rm trivy_test_grafana_data
 docker-compose up -d --build
 ```
+
+---
+
+## 🗄️ 데이터 영구 저장 (Persistence)
+
+Docker 볼륨으로 데이터가 영구 저장됩니다:
+
+| 볼륨 | 설명 |
+|------|------|
+| `mysql_data` | MySQL 스캔 기록, 사용자, 예외 처리 등 |
+| `grafana_data` | Grafana 대시보드 설정 |
+| `prometheus_data` | Prometheus 메트릭 데이터 |
+| `loki_data` | Loki 로그 데이터 |
+
+```bash
+# 볼륨 확인
+docker volume ls | grep trivy
+
+# ⚠️ 주의: 볼륨 삭제 시 데이터 영구 삭제
+docker volume rm trivy_test_mysql_data
+```
+
+---
+
+## 🔭 Observability: 통합 로깅 (Loki + Promtail)
+
+모든 컨테이너 로그를 Grafana에서 통합 조회 가능:
+
+1. **Grafana 접속** → 좌측 메뉴 → **Explore**
+2. **Data source**: Loki 선택
+3. **Label filters**: `service = webserver` 등 선택
+4. 로그 검색 실행
+
+**LogQL 쿼리 예시**:
+```
+{service="webserver"} |= "error"
+{container=~"trivy.*"} | json | severity="CRITICAL"
+```
+
+---
+
+## 🕒 Timezone 설정 (KST)
+
+모든 컨테이너에 `TZ=Asia/Seoul` 설정 적용:
+- 로그 시간이 한국 시간으로 표시
+- 스캔 기록 시간도 KST로 저장
 
 ---
 

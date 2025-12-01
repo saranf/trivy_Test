@@ -10,6 +10,8 @@ services:
       - ./webserver/src:/var/www/html
     depends_on:
       - webserver
+    environment:
+      - TZ=Asia/Seoul
     networks:
       - app-network
 
@@ -24,6 +26,7 @@ services:
       - ./webserver/entrypoint.sh:/entrypoint.sh  # 시작 스크립트
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     environment:
+      - TZ=Asia/Seoul
       - FROM_EMAIL=trivy-scanner@monitor.rmstudio.co.kr
       - FROM_NAME=Trivy Scanner
       - ALERT_EMAIL=qorwlsdk1995@naver.com
@@ -36,12 +39,15 @@ services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: trivy_db
-      MYSQL_USER: trivy_user
-      MYSQL_PASSWORD: trivy_password
+      - TZ=Asia/Seoul
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=trivy_db
+      - MYSQL_USER=trivy_user
+      - MYSQL_PASSWORD=trivy_password
     ports:
       - "9756:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql  # 🚨 데이터 영구 저장
     networks:
       - app-network
 
@@ -50,6 +56,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - TZ=Asia/Seoul
       - API_URL=http://nginx:80/auto_scan.php
     depends_on:
       - nginx
@@ -68,6 +75,8 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+    environment:
+      - TZ=Asia/Seoul
     restart: unless-stopped
     networks:
       - app-network
@@ -78,6 +87,7 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - TZ=Asia/Seoul
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       # 익명 접근 허용 (로그인 없이 대시보드 보기)
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -90,6 +100,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
+      - loki
     restart: unless-stopped
     networks:
       - app-network
@@ -104,6 +115,8 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    environment:
+      - TZ=Asia/Seoul
     restart: unless-stopped
     networks:
       - app-network
@@ -112,8 +125,40 @@ services:
   mailserver:
     image: boky/postfix
     environment:
+      - TZ=Asia/Seoul
       - ALLOWED_SENDER_DOMAINS=monitor.rmstudio.co.kr rmstudio.co.kr
       - HOSTNAME=mail.monitor.rmstudio.co.kr
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 🔭 Loki - 로그 저장소
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    environment:
+      - TZ=Asia/Seoul
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # 🔭 Promtail - 로그 수집기
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    environment:
+      - TZ=Asia/Seoul
+    depends_on:
+      - loki
     restart: unless-stopped
     networks:
       - app-network
@@ -125,4 +170,6 @@ networks:
 volumes:
   prometheus_data:
   grafana_data:
+  mysql_data:      # 🚨 MySQL 데이터 영구 저장
+  loki_data:       # 🔭 Loki 로그 데이터
 

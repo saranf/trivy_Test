@@ -122,13 +122,13 @@ function initDatabase($conn) {
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
 
-    // 사용자 테이블 (RBAC)
+    // 사용자 테이블 (RBAC) - demo 역할 포함
     $conn->query("
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(50) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
-            role ENUM('viewer', 'operator', 'admin') NOT NULL DEFAULT 'viewer',
+            role ENUM('viewer', 'demo', 'operator', 'admin') NOT NULL DEFAULT 'viewer',
             email VARCHAR(100),
             is_active TINYINT(1) DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -138,6 +138,9 @@ function initDatabase($conn) {
             INDEX idx_role (role)
         )
     ");
+
+    // 기존 테이블에 demo 역할 추가 (이미 테이블이 있는 경우)
+    @$conn->query("ALTER TABLE users MODIFY COLUMN role ENUM('viewer', 'demo', 'operator', 'admin') NOT NULL DEFAULT 'viewer'");
 
     // 감사 로그 테이블 (Audit Log)
     $conn->query("
