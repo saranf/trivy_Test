@@ -85,7 +85,7 @@
         "title": "Total Scans",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 0, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_total_scans", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": null}]}}}
       },
@@ -94,7 +94,7 @@
         "title": "Scans (24h)",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 3, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_scans_24h", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}}
       },
@@ -103,7 +103,7 @@
         "title": "Total Vulns",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 6, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_vulnerabilities_total", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "yellow", "value": null}, {"color": "red", "value": 100}]}}}
       },
@@ -112,7 +112,7 @@
         "title": "🔴 Critical",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 9, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_vulnerabilities_by_severity{severity=\"critical\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "red"}}}
       },
@@ -121,7 +121,7 @@
         "title": "🟠 High",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 12, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_vulnerabilities_by_severity{severity=\"high\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "orange"}}}
       },
@@ -130,16 +130,36 @@
         "title": "🛡️ Excepted",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
+        "gridPos": {"x": 15, "y": 0, "w": 3, "h": 3},
         "targets": [{"expr": "trivy_exceptions_active", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "blue"}}}
+      },
+      {
+        "id": 17,
+        "title": "📊 MTTR (일)",
+        "description": "평균 조치 기간 (Mean Time To Remediate)",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 18, "y": 0, "w": 3, "h": 3},
+        "targets": [{"expr": "trivy_mttr_days", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "fieldConfig": {"defaults": {"unit": "d", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 7}, {"color": "red", "value": 30}]}}}
+      },
+      {
+        "id": 18,
+        "title": "👮 Misconfig",
+        "description": "설정 오류 (컴플라이언스 위반)",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 21, "y": 0, "w": 3, "h": 3},
+        "targets": [{"expr": "trivy_misconfigurations_total", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 10}]}}}
       },
       {
         "id": 5,
         "title": "Vulnerabilities by Severity",
         "type": "piechart",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 4, "w": 8, "h": 8},
+        "gridPos": {"x": 0, "y": 3, "w": 6, "h": 7},
         "targets": [{"expr": "trivy_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"legend": {"displayMode": "table", "placement": "right"}}
       },
@@ -148,7 +168,7 @@
         "title": "Scans by Source",
         "type": "piechart",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 8, "y": 4, "w": 8, "h": 8},
+        "gridPos": {"x": 6, "y": 3, "w": 6, "h": 7},
         "targets": [{"expr": "trivy_scans_by_source", "legendFormat": "{{source}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"legend": {"displayMode": "table", "placement": "right"}}
       },
@@ -157,8 +177,19 @@
         "title": "🛡️ Excepted by Severity",
         "type": "piechart",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 16, "y": 4, "w": 8, "h": 8},
+        "gridPos": {"x": 12, "y": 3, "w": 6, "h": 7},
         "targets": [{"expr": "trivy_excepted_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "options": {"legend": {"displayMode": "table", "placement": "right"}, "pieType": "donut"},
+        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+      },
+      {
+        "id": 19,
+        "title": "👮 Misconfigs by Severity",
+        "description": "컴플라이언스 위반 (설정 오류)",
+        "type": "piechart",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 18, "y": 3, "w": 6, "h": 7},
+        "targets": [{"expr": "trivy_misconfigurations_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"legend": {"displayMode": "table", "placement": "right"}, "pieType": "donut"},
         "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
       },
@@ -167,7 +198,7 @@
         "title": "Vulnerabilities per Image",
         "type": "bargauge",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 6},
+        "gridPos": {"x": 0, "y": 10, "w": 8, "h": 6},
         "targets": [{"expr": "trivy_image_vulnerabilities{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"orientation": "horizontal", "displayMode": "gradient"},
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
@@ -177,17 +208,31 @@
         "title": "Critical per Image",
         "type": "bargauge",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 6},
+        "gridPos": {"x": 8, "y": 10, "w": 8, "h": 6},
         "targets": [{"expr": "trivy_image_critical{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"orientation": "horizontal", "displayMode": "gradient"},
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 10}]}}}
+      },
+      {
+        "id": 20,
+        "title": "📈 KPI Summary",
+        "description": "보안 운영 성과 지표",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 16, "y": 10, "w": 8, "h": 6},
+        "targets": [
+          {"expr": "trivy_vulnerabilities_fixed", "legendFormat": "조치 완료", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+          {"expr": "trivy_vulnerabilities_open", "legendFormat": "미조치", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        ],
+        "options": {"graphMode": "none", "colorMode": "value", "textMode": "auto"},
+        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
       },
       {
         "id": 9,
         "title": "Container CPU Usage",
         "type": "timeseries",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 7},
         "targets": [{"expr": "rate(container_cpu_usage_seconds_total{name=~\"$container\"}[5m]) * 100", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "percent"}}
       },
@@ -196,7 +241,7 @@
         "title": "Container Memory Usage",
         "type": "timeseries",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 7},
         "targets": [{"expr": "container_memory_usage_bytes{name=~\"$container\"} / 1024 / 1024", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "decmbytes"}}
       },
@@ -205,7 +250,7 @@
         "title": "Container Network RX",
         "type": "timeseries",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 26, "w": 12, "h": 8},
+        "gridPos": {"x": 0, "y": 23, "w": 12, "h": 7},
         "targets": [{"expr": "rate(container_network_receive_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "Bps"}}
       },
@@ -214,7 +259,7 @@
         "title": "Container Network TX",
         "type": "timeseries",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 12, "y": 26, "w": 12, "h": 8},
+        "gridPos": {"x": 12, "y": 23, "w": 12, "h": 7},
         "targets": [{"expr": "rate(container_network_transmit_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "Bps"}}
       }

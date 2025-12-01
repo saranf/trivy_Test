@@ -58,6 +58,48 @@ function initDatabase($conn) {
         )
     ");
 
+    // 컴플라이언스(설정 오류) 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS scan_misconfigs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            scan_id INT NOT NULL,
+            config_type VARCHAR(100),
+            config_id VARCHAR(255),
+            title VARCHAR(500),
+            description TEXT,
+            severity VARCHAR(50),
+            resolution TEXT,
+            FOREIGN KEY (scan_id) REFERENCES scan_history(id) ON DELETE CASCADE
+        )
+    ");
+
+    // 취약점 생명주기 추적 테이블 (MTTR 계산용)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS vulnerability_lifecycle (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            image_name VARCHAR(255) NOT NULL,
+            vulnerability_id VARCHAR(255) NOT NULL,
+            severity VARCHAR(50),
+            first_seen DATETIME NOT NULL,
+            fixed_at DATETIME DEFAULT NULL,
+            status ENUM('open', 'fixed', 'excepted') DEFAULT 'open',
+            INDEX idx_image_vuln (image_name, vulnerability_id),
+            INDEX idx_status (status),
+            INDEX idx_fixed (fixed_at)
+        )
+    ");
+
+    // scan_history에 misconfig 카운트 컬럼 추가
+    if (!columnExists($conn, 'scan_history', 'misconfig_count')) {
+        @$conn->query("ALTER TABLE scan_history ADD COLUMN misconfig_count INT DEFAULT 0");
+    }
+    if (!columnExists($conn, 'scan_history', 'misconfig_critical')) {
+        @$conn->query("ALTER TABLE scan_history ADD COLUMN misconfig_critical INT DEFAULT 0");
+    }
+    if (!columnExists($conn, 'scan_history', 'misconfig_high')) {
+        @$conn->query("ALTER TABLE scan_history ADD COLUMN misconfig_high INT DEFAULT 0");
+    }
+
     // 예외 처리 테이블 (Risk Acceptance)
     $conn->query("
         CREATE TABLE IF NOT EXISTS vulnerability_exceptions (
@@ -150,13 +192,16 @@ function initDatabase($conn) {
     }
 }
 
-// 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk')
+// 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk', 'scheduled')
 function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
     $counts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
+    $misconfigCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
     $vulns = [];
+    $misconfigs = [];
 
     if (isset($trivyData['Results'])) {
         foreach ($trivyData['Results'] as $result) {
+            // 취약점 수집
             if (isset($result['Vulnerabilities'])) {
                 foreach ($result['Vulnerabilities'] as $v) {
                     $sev = $v['Severity'] ?? 'UNKNOWN';
@@ -164,17 +209,28 @@ function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
                     $vulns[] = $v;
                 }
             }
+            // 설정 오류 수집 (Misconfigurations)
+            if (isset($result['Misconfigurations'])) {
+                foreach ($result['Misconfigurations'] as $m) {
+                    $sev = $m['Severity'] ?? 'UNKNOWN';
+                    if (isset($misconfigCounts[$sev])) $misconfigCounts[$sev]++;
+                    $misconfigs[] = $m;
+                }
+            }
         }
     }
 
     $total = array_sum($counts);
+    $misconfigTotal = array_sum($misconfigCounts);
 
-    $stmt = $conn->prepare("INSERT INTO scan_history (image_name, total_vulns, critical_count, high_count, medium_count, low_count, scan_source) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("siiiiss", $imageName, $total, $counts['CRITICAL'], $counts['HIGH'], $counts['MEDIUM'], $counts['LOW'], $scanSource);
+    // 스캔 기록 저장
+    $stmt = $conn->prepare("INSERT INTO scan_history (image_name, total_vulns, critical_count, high_count, medium_count, low_count, scan_source, misconfig_count, misconfig_critical, misconfig_high) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("siiiissiii", $imageName, $total, $counts['CRITICAL'], $counts['HIGH'], $counts['MEDIUM'], $counts['LOW'], $scanSource, $misconfigTotal, $misconfigCounts['CRITICAL'], $misconfigCounts['HIGH']);
     $stmt->execute();
     $scanId = $conn->insert_id;
     $stmt->close();
 
+    // 취약점 저장
     $stmt = $conn->prepare("INSERT INTO scan_vulnerabilities (scan_id, library, vulnerability, severity, installed_version, fixed_version, title) VALUES (?, ?, ?, ?, ?, ?, ?)");
     foreach ($vulns as $v) {
         $lib = $v['PkgName'] ?? '';
@@ -188,7 +244,87 @@ function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
     }
     $stmt->close();
 
+    // 설정 오류 저장
+    if (!empty($misconfigs)) {
+        $stmt = $conn->prepare("INSERT INTO scan_misconfigs (scan_id, config_type, config_id, title, description, severity, resolution) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        foreach ($misconfigs as $m) {
+            $configType = $m['Type'] ?? '';
+            $configId = $m['ID'] ?? $m['AVDID'] ?? '';
+            $title = $m['Title'] ?? '';
+            $desc = $m['Description'] ?? '';
+            $sev = $m['Severity'] ?? '';
+            $resolution = $m['Resolution'] ?? '';
+            $stmt->bind_param("issssss", $scanId, $configType, $configId, $title, $desc, $sev, $resolution);
+            $stmt->execute();
+        }
+        $stmt->close();
+    }
+
+    // 취약점 생명주기 추적 (MTTR 계산용)
+    updateVulnerabilityLifecycle($conn, $imageName, $vulns);
+
     return $scanId;
+}
+
+// 취약점 생명주기 업데이트 (MTTR 계산용)
+function updateVulnerabilityLifecycle($conn, $imageName, $currentVulns) {
+    $now = date('Y-m-d H:i:s');
+    $currentVulnIds = [];
+
+    // 현재 발견된 취약점 ID 목록
+    foreach ($currentVulns as $v) {
+        $vulnId = $v['VulnerabilityID'] ?? '';
+        if (!empty($vulnId)) {
+            $currentVulnIds[$vulnId] = $v['Severity'] ?? 'UNKNOWN';
+        }
+    }
+
+    // 기존 open 취약점 조회
+    $stmt = $conn->prepare("SELECT vulnerability_id FROM vulnerability_lifecycle WHERE image_name = ? AND status = 'open'");
+    $stmt->bind_param("s", $imageName);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $existingOpen = [];
+    while ($row = $result->fetch_assoc()) {
+        $existingOpen[] = $row['vulnerability_id'];
+    }
+    $stmt->close();
+
+    // 새로 발견된 취약점 등록
+    foreach ($currentVulnIds as $vulnId => $severity) {
+        if (!in_array($vulnId, $existingOpen)) {
+            // 이전에 fixed 됐다가 다시 나타난 경우 확인
+            $stmt = $conn->prepare("SELECT id FROM vulnerability_lifecycle WHERE image_name = ? AND vulnerability_id = ? AND status = 'fixed'");
+            $stmt->bind_param("ss", $imageName, $vulnId);
+            $stmt->execute();
+            $existing = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ($existing) {
+                // 재발 - status를 다시 open으로
+                $stmt = $conn->prepare("UPDATE vulnerability_lifecycle SET status = 'open', fixed_at = NULL WHERE id = ?");
+                $stmt->bind_param("i", $existing['id']);
+                $stmt->execute();
+                $stmt->close();
+            } else {
+                // 신규 등록
+                $stmt = $conn->prepare("INSERT INTO vulnerability_lifecycle (image_name, vulnerability_id, severity, first_seen, status) VALUES (?, ?, ?, ?, 'open')");
+                $stmt->bind_param("ssss", $imageName, $vulnId, $severity, $now);
+                $stmt->execute();
+                $stmt->close();
+            }
+        }
+    }
+
+    // 조치된 취약점 표시 (이전엔 있었는데 현재 없는 것)
+    foreach ($existingOpen as $vulnId) {
+        if (!isset($currentVulnIds[$vulnId])) {
+            $stmt = $conn->prepare("UPDATE vulnerability_lifecycle SET status = 'fixed', fixed_at = ? WHERE image_name = ? AND vulnerability_id = ? AND status = 'open'");
+            $stmt->bind_param("sss", $now, $imageName, $vulnId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
 }
 
 // 스캔 기록 목록 조회 (검색 지원)

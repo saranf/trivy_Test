@@ -156,7 +156,79 @@ try {
     echo "trivy_excepted_vulnerabilities_by_severity{severity=\"critical\"} " . $exceptionStats['by_severity']['CRITICAL'] . "\n";
     echo "trivy_excepted_vulnerabilities_by_severity{severity=\"high\"} " . $exceptionStats['by_severity']['HIGH'] . "\n";
     echo "trivy_excepted_vulnerabilities_by_severity{severity=\"medium\"} " . $exceptionStats['by_severity']['MEDIUM'] . "\n";
-    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"low\"} " . $exceptionStats['by_severity']['LOW'] . "\n";
+    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"low\"} " . $exceptionStats['by_severity']['LOW'] . "\n\n";
+
+    // ========================================
+    // MTTR (Mean Time To Remediate) KPI
+    // ========================================
+    $mttrStats = ['mttr_days' => 0, 'fixed_count' => 0, 'open_count' => 0];
+
+    $tableCheck = $conn->query("SHOW TABLES LIKE 'vulnerability_lifecycle'");
+    if ($tableCheck && $tableCheck->num_rows > 0) {
+        // MTTR 계산 (fixed 된 취약점의 평균 조치 기간)
+        $result = $conn->query("
+            SELECT AVG(DATEDIFF(fixed_at, first_seen)) as mttr, COUNT(*) as cnt
+            FROM vulnerability_lifecycle
+            WHERE status = 'fixed' AND fixed_at IS NOT NULL
+        ");
+        $mttr = $result->fetch_assoc();
+        $mttrStats['mttr_days'] = round($mttr['mttr'] ?? 0, 1);
+        $mttrStats['fixed_count'] = $mttr['cnt'] ?? 0;
+
+        // 열린 취약점 수
+        $result = $conn->query("SELECT COUNT(*) as cnt FROM vulnerability_lifecycle WHERE status = 'open'");
+        $mttrStats['open_count'] = $result->fetch_assoc()['cnt'] ?? 0;
+    }
+
+    echo "# HELP trivy_mttr_days Mean Time To Remediate (days)\n";
+    echo "# TYPE trivy_mttr_days gauge\n";
+    echo "trivy_mttr_days " . $mttrStats['mttr_days'] . "\n\n";
+
+    echo "# HELP trivy_vulnerabilities_fixed Total fixed vulnerabilities\n";
+    echo "# TYPE trivy_vulnerabilities_fixed counter\n";
+    echo "trivy_vulnerabilities_fixed " . $mttrStats['fixed_count'] . "\n\n";
+
+    echo "# HELP trivy_vulnerabilities_open Currently open vulnerabilities\n";
+    echo "# TYPE trivy_vulnerabilities_open gauge\n";
+    echo "trivy_vulnerabilities_open " . $mttrStats['open_count'] . "\n\n";
+
+    // ========================================
+    // 컴플라이언스 (Misconfigurations) 통계
+    // ========================================
+    $misconfigStats = ['total' => 0, 'critical' => 0, 'high' => 0];
+
+    $tableCheck = $conn->query("SHOW TABLES LIKE 'scan_misconfigs'");
+    if ($tableCheck && $tableCheck->num_rows > 0) {
+        // 최신 스캔의 설정 오류 통계
+        $result = $conn->query("
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN severity = 'CRITICAL' THEN 1 ELSE 0 END) as critical,
+                SUM(CASE WHEN severity = 'HIGH' THEN 1 ELSE 0 END) as high
+            FROM scan_misconfigs sm
+            INNER JOIN (
+                SELECT id FROM scan_history
+                WHERE scan_date = (SELECT MAX(scan_date) FROM scan_history)
+            ) latest ON sm.scan_id = latest.id
+        ");
+        $mc = $result->fetch_assoc();
+        $misconfigStats['total'] = $mc['total'] ?? 0;
+        $misconfigStats['critical'] = $mc['critical'] ?? 0;
+        $misconfigStats['high'] = $mc['high'] ?? 0;
+    }
+
+    // scan_history에서 총 설정오류 수
+    $result = $conn->query("SELECT SUM(misconfig_count) as total, SUM(misconfig_critical) as critical, SUM(misconfig_high) as high FROM scan_history");
+    $mcTotal = $result->fetch_assoc();
+
+    echo "# HELP trivy_misconfigurations_total Total misconfigurations found\n";
+    echo "# TYPE trivy_misconfigurations_total gauge\n";
+    echo "trivy_misconfigurations_total " . ($mcTotal['total'] ?? 0) . "\n\n";
+
+    echo "# HELP trivy_misconfigurations_by_severity Misconfigurations by severity\n";
+    echo "# TYPE trivy_misconfigurations_by_severity gauge\n";
+    echo "trivy_misconfigurations_by_severity{severity=\"critical\"} " . ($mcTotal['critical'] ?? 0) . "\n";
+    echo "trivy_misconfigurations_by_severity{severity=\"high\"} " . ($mcTotal['high'] ?? 0) . "\n";
 
 } catch (Exception $e) {
     echo "# Error: " . $e->getMessage() . "\n";

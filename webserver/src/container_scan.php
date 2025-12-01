@@ -28,8 +28,8 @@ function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy 스캔 실행 (JSON 형식)
-    $command = "trivy image --no-progress --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    // Trivy 스캔 실행 (취약점 + 설정오류)
+    $command = "trivy image --no-progress --scanners vuln,misconfig --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
@@ -42,7 +42,7 @@ function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
     return convertToMarkdown($data, $imageOrId);
 }
 
-// JSON 결과를 Markdown으로 변환 (예외 처리 정보 포함)
+// JSON 결과를 Markdown으로 변환 (예외 처리 정보 포함 + 컴플라이언스)
 function convertToMarkdown($data, $target) {
     // 예외 처리 정보 가져오기
     $exceptedMap = [];
@@ -55,57 +55,83 @@ function convertToMarkdown($data, $target) {
         }
     }
 
-    $md = "# 🔍 Trivy 취약점 스캔 결과\n\n";
+    $md = "# 🔍 Trivy 보안 스캔 결과\n\n";
     $md .= "**스캔 대상**: `$target`\n\n";
     $md .= "**스캔 시간**: " . date('Y-m-d H:i:s') . "\n\n";
     $md .= "---\n\n";
 
     $totalVulns = 0;
+    $totalMisconfigs = 0;
     $exceptedCount = 0;
     $severityCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
+    $misconfigCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
+
+    $vulnMd = "";
+    $misconfigMd = "";
 
     if (!isset($data['Results']) || empty($data['Results'])) {
-        $md .= "## ✅ 취약점이 발견되지 않았습니다!\n";
+        $md .= "## ✅ 보안 이슈가 발견되지 않았습니다!\n";
         return $md;
     }
 
+    // 취약점 처리
     foreach ($data['Results'] as $result) {
-        if (!isset($result['Vulnerabilities']) || empty($result['Vulnerabilities'])) {
-            continue;
+        if (isset($result['Vulnerabilities']) && !empty($result['Vulnerabilities'])) {
+            $vulnMd .= "### 📦 " . ($result['Target'] ?? 'Unknown') . "\n\n";
+            $vulnMd .= "| 심각도 | CVE ID | 패키지 | 설치 버전 | 수정 버전 | 상태 | 설명 |\n";
+            $vulnMd .= "|:------:|--------|--------|-----------|-----------|------|------|\n";
+
+            foreach ($result['Vulnerabilities'] as $vuln) {
+                $severity = $vuln['Severity'] ?? 'UNKNOWN';
+                $severityIcon = getSeverityIcon($severity);
+                $vulnId = $vuln['VulnerabilityID'] ?? 'N/A';
+                $pkgName = $vuln['PkgName'] ?? 'N/A';
+                $installed = $vuln['InstalledVersion'] ?? 'N/A';
+                $fixed = $vuln['FixedVersion'] ?? '-';
+                $title = substr($vuln['Title'] ?? $vuln['Description'] ?? 'N/A', 0, 40);
+
+                $status = '';
+                if (isset($exceptedMap[$vulnId])) {
+                    $status = '🛡️예외';
+                    $exceptedCount++;
+                }
+
+                $vulnMd .= "| $severityIcon $severity | $vulnId | $pkgName | $installed | $fixed | $status | $title |\n";
+                $totalVulns++;
+                if (isset($severityCounts[$severity])) {
+                    $severityCounts[$severity]++;
+                }
+            }
+            $vulnMd .= "\n";
         }
 
-        $md .= "## 📦 " . ($result['Target'] ?? 'Unknown') . "\n\n";
-        $md .= "| 심각도 | CVE ID | 패키지 | 설치 버전 | 수정 버전 | 상태 | 설명 |\n";
-        $md .= "|:------:|--------|--------|-----------|-----------|------|------|\n";
+        // 설정 오류 (Misconfigurations) 처리
+        if (isset($result['Misconfigurations']) && !empty($result['Misconfigurations'])) {
+            $misconfigMd .= "### 📋 " . ($result['Target'] ?? 'Unknown') . "\n\n";
+            $misconfigMd .= "| 심각도 | ID | 유형 | 제목 | 해결 방법 |\n";
+            $misconfigMd .= "|:------:|-----|------|------|----------|\n";
 
-        foreach ($result['Vulnerabilities'] as $vuln) {
-            $severity = $vuln['Severity'] ?? 'UNKNOWN';
-            $severityIcon = getSeverityIcon($severity);
-            $vulnId = $vuln['VulnerabilityID'] ?? 'N/A';
-            $pkgName = $vuln['PkgName'] ?? 'N/A';
-            $installed = $vuln['InstalledVersion'] ?? 'N/A';
-            $fixed = $vuln['FixedVersion'] ?? '-';
-            $title = substr($vuln['Title'] ?? $vuln['Description'] ?? 'N/A', 0, 40);
+            foreach ($result['Misconfigurations'] as $misconfig) {
+                $severity = $misconfig['Severity'] ?? 'UNKNOWN';
+                $severityIcon = getSeverityIcon($severity);
+                $configId = $misconfig['ID'] ?? $misconfig['AVDID'] ?? 'N/A';
+                $configType = $misconfig['Type'] ?? 'N/A';
+                $title = substr($misconfig['Title'] ?? 'N/A', 0, 50);
+                $resolution = substr($misconfig['Resolution'] ?? '-', 0, 40);
 
-            // 예외 처리 상태 확인
-            $status = '';
-            if (isset($exceptedMap[$vulnId])) {
-                $status = '🛡️예외';
-                $exceptedCount++;
+                $misconfigMd .= "| $severityIcon $severity | $configId | $configType | $title | $resolution |\n";
+                $totalMisconfigs++;
+                if (isset($misconfigCounts[$severity])) {
+                    $misconfigCounts[$severity]++;
+                }
             }
-
-            $md .= "| $severityIcon $severity | $vulnId | $pkgName | $installed | $fixed | $status | $title |\n";
-
-            $totalVulns++;
-            if (isset($severityCounts[$severity])) {
-                $severityCounts[$severity]++;
-            }
+            $misconfigMd .= "\n";
         }
-        $md .= "\n";
     }
 
-    // 요약 추가
+    // 요약
     $summary = "## 📊 요약\n\n";
+    $summary .= "### 🔒 소프트웨어 취약점 (CVE)\n";
     $summary .= "- **총 취약점**: $totalVulns 개\n";
     $summary .= "- 🔴 CRITICAL: {$severityCounts['CRITICAL']} 개\n";
     $summary .= "- 🟠 HIGH: {$severityCounts['HIGH']} 개\n";
@@ -116,7 +142,29 @@ function convertToMarkdown($data, $target) {
     }
     $summary .= "\n";
 
-    return $summary . $md;
+    if ($totalMisconfigs > 0) {
+        $summary .= "### 👮 컴플라이언스 (설정 오류)\n";
+        $summary .= "- **총 설정 오류**: $totalMisconfigs 개\n";
+        $summary .= "- 🔴 CRITICAL: {$misconfigCounts['CRITICAL']} 개\n";
+        $summary .= "- 🟠 HIGH: {$misconfigCounts['HIGH']} 개\n";
+        $summary .= "- 🟡 MEDIUM: {$misconfigCounts['MEDIUM']} 개\n";
+        $summary .= "- 🟢 LOW: {$misconfigCounts['LOW']} 개\n";
+        $summary .= "\n";
+    }
+
+    // 탭 구분으로 출력
+    $output = $summary;
+    if ($totalVulns > 0) {
+        $output .= "---\n\n## 🔒 소프트웨어 취약점\n\n" . $vulnMd;
+    }
+    if ($totalMisconfigs > 0) {
+        $output .= "---\n\n## 👮 컴플라이언스 (설정/보안위규)\n\n" . $misconfigMd;
+    }
+    if ($totalVulns == 0 && $totalMisconfigs == 0) {
+        $output .= "## ✅ 보안 이슈가 발견되지 않았습니다!\n";
+    }
+
+    return $output;
 }
 
 function getSeverityIcon($severity) {

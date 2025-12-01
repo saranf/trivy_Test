@@ -34,7 +34,7 @@ function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {
     $safeImage = escapeshellarg($image);
     $safeSeverity = escapeshellarg($severity);
     
-    $command = "trivy image --no-progress --severity $safeSeverity --format json $safeImage 2>/dev/null";
+    $command = "trivy image --no-progress --scanners vuln,misconfig --severity $safeSeverity --format json $safeImage 2>/dev/null";
     exec($command, $output, $result_code);
     
     $jsonOutput = implode("\n", $output);

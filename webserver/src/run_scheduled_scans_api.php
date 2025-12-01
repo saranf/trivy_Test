@@ -29,7 +29,7 @@ foreach ($dueScans as $scan) {
     
     // Trivy 스캔 실행
     $safeTarget = escapeshellarg($imageName);
-    $command = "trivy image --no-progress --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
+    $command = "trivy image --no-progress --scanners vuln,misconfig --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
     
     exec($command, $output, $resultCode);
     

@@ -84,10 +84,32 @@
 - 활성화/비활성화 토글 가능
 - 마지막 실행 시간 및 다음 실행 시간 표시
 
-### 5. 계층형 Grafana 대시보드
-- 전체 취약점 현황, 심각도별 분포
-- 예외 처리 통계 (Active/Expired)
-- 컨테이너별 상세 필터링
+### 5. 👮 컴플라이언스 진단 (Compliance Check)
+- **라이브러리 취약점(CVE)** + **설정 오류(Misconfiguration)** 통합 스캔
+- Trivy `--scanners vuln,misconfig` 옵션 활용
+- **탐지 항목 예시**:
+  - Root 계정으로 컨테이너 실행 여부
+  - Privileged(특권) 모드 사용
+  - 불필요한 포트 노출
+  - Dockerfile 보안 모범 사례 위반
+- 스캔 결과에서 **[소프트웨어 취약점]** / **[컴플라이언스]** 분리 표시
+- **어필 포인트**: "단순 라이브러리 패치뿐만 아니라, 인프라 설정(IaC)의 보안 규정 준수 여부까지 통합 관제"
+
+### 6. 📊 운영 성과 지표 (KPI) - MTTR
+- **MTTR (Mean Time To Remediate)**: 평균 조치 기간
+- 취약점이 **최초 발견된 날(First Seen)**과 **조치 완료된 날(Fixed At)** 추적
+- Grafana 대시보드에 **"평균 조치 기간: X.X일"** 표시
+- **추가 지표**:
+  - 조치 완료된 취약점 수
+  - 현재 미조치(Open) 취약점 수
+  - 예외 처리된 취약점 수
+- **어필 포인트**: "보안 운영의 성과를 측정하기 위해 정량적 지표(KPI) 시스템을 도입"
+
+### 7. 계층형 Grafana 대시보드
+- **Row 1 (통계)**: Total Scans, 24h Scans, Vulns, Critical, High, Excepted, MTTR, Misconfig
+- **Row 2 (분포)**: 심각도별 파이차트, 스캔 소스, 예외 심각도, 설정오류 심각도
+- **Row 3 (이미지별)**: 이미지별 취약점, 이미지별 Critical, KPI Summary
+- **Row 4-5 (리소스)**: 컨테이너 CPU/Memory/Network
 
 ---
 
@@ -196,3 +218,45 @@ environment:
 | Exception Reason | 예외 사유 |
 | Exception Expires | 예외 만료일 |
 
+---
+
+## 📈 Prometheus 메트릭
+
+| 메트릭 | 설명 |
+|--------|------|
+| `trivy_total_scans` | 전체 스캔 횟수 |
+| `trivy_scans_24h` | 24시간 내 스캔 횟수 |
+| `trivy_vulnerabilities_total` | 전체 취약점 수 |
+| `trivy_vulnerabilities_by_severity` | 심각도별 취약점 수 |
+| `trivy_exceptions_active` | 활성 예외 처리 수 |
+| `trivy_mttr_days` | **평균 조치 기간 (일)** |
+| `trivy_vulnerabilities_fixed` | **조치 완료 취약점 수** |
+| `trivy_vulnerabilities_open` | **미조치 취약점 수** |
+| `trivy_misconfigurations_total` | **설정 오류 총 개수** |
+| `trivy_misconfigurations_by_severity` | **심각도별 설정 오류** |
+
+---
+
+## 🏆 어필 포인트
+
+### 과장급(Manager Level) 역량 어필
+
+1. **규정 준수 (Governance)**
+   - "단순 취약점 스캐너가 아닌, IaC(Infrastructure as Code) 컴플라이언스까지 관장하는 **통합 보안 플랫폼**"
+
+2. **성과 측정 (Performance)**
+   - "MTTR(평균 조치 기간) 지표를 통해 **보안 운영 성과를 정량적으로 측정** 가능"
+
+3. **내부 통제 (Audit)**
+   - "모든 Critical Action에 대해 **감사 로그를 자동 기록**, 내부 감사 대응 준비"
+
+4. **자동화 (Automation)**
+   - "Docker 이벤트 감지, 주기적 스캔, Critical 알림 등 **운영 부담 최소화**"
+
+### 면접 예상 질문 & 답변
+
+**Q: 이 시스템의 차별점은?**
+> A: 단순히 취약점을 찾는 것에서 그치지 않고, Diff 분석으로 변화를 추적하고, MTTR로 조치 성과를 측정하며, 컴플라이언스 진단까지 **보안 운영의 전체 생명주기를 관리**합니다.
+
+**Q: 실제 운영 환경에서 어떻게 활용?**
+> A: Critical 발견 시 즉시 알림, 예외 처리로 오탐 관리, 주기적 스캔으로 지속적 모니터링, 감사 로그로 책임 추적이 가능합니다.
