@@ -32,6 +32,10 @@ if (isset($_GET['toggle']) && is_numeric($_GET['toggle'])) {
 // 추가/수정 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $imageName = trim($_POST['image_name'] ?? '');
+    // 직접 입력을 선택한 경우 custom_image 사용
+    if ($imageName === '__custom__') {
+        $imageName = trim($_POST['custom_image'] ?? '');
+    }
     $scheduleType = $_POST['schedule_type'] ?? 'daily';
     $scheduleTime = $_POST['schedule_time'] ?? '02:00';
     $scheduleDay = (int)($_POST['schedule_day'] ?? 0);
@@ -53,6 +57,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $scheduledScans = getScheduledScans($conn, false);
 $dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+// Docker 컨테이너 및 이미지 목록 가져오기
+$containers = [];
+$images = [];
+exec('docker ps --format "{{.Names}}|{{.Image}}" 2>/dev/null', $containerOutput);
+foreach ($containerOutput as $line) {
+    $parts = explode('|', $line);
+    if (count($parts) >= 2) {
+        $containers[] = ['name' => trim($parts[0]), 'image' => trim($parts[1])];
+    }
+}
+exec('docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep -v "<none>" | head -20', $imageOutput);
+$images = array_filter($imageOutput);
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -105,8 +122,28 @@ $dayNames = ['일', '월', '화', '수', '목', '금', '토'];
             <form method="post">
                 <div class="form-row">
                     <div class="form-group" style="flex: 2;">
-                        <label>이미지명 (Docker 이미지 또는 컨테이너명)</label>
-                        <input type="text" name="image_name" placeholder="nginx:latest 또는 my_container" required>
+                        <label>대상 선택 (컨테이너/이미지)</label>
+                        <select name="image_name" id="imageSelect" required>
+                            <option value="">-- 선택하세요 --</option>
+                            <?php if (!empty($containers)): ?>
+                            <optgroup label="🐳 실행 중인 컨테이너">
+                                <?php foreach ($containers as $c): ?>
+                                <option value="<?= htmlspecialchars($c['name']) ?>"><?= htmlspecialchars($c['name']) ?> (<?= htmlspecialchars($c['image']) ?>)</option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                            <?php endif; ?>
+                            <?php if (!empty($images)): ?>
+                            <optgroup label="📦 Docker 이미지">
+                                <?php foreach ($images as $img): ?>
+                                <option value="<?= htmlspecialchars($img) ?>"><?= htmlspecialchars($img) ?></option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                            <?php endif; ?>
+                            <optgroup label="✏️ 직접 입력">
+                                <option value="__custom__">직접 입력...</option>
+                            </optgroup>
+                        </select>
+                        <input type="text" id="customImage" name="custom_image" placeholder="이미지명 직접 입력" style="display:none; margin-top: 8px;">
                     </div>
                     <div class="form-group">
                         <label>스캔 주기</label>
@@ -193,6 +230,20 @@ $dayNames = ['일', '월', '화', '수', '목', '금', '토'];
         const type = document.getElementById('scheduleType').value;
         document.getElementById('daySelect').classList.toggle('show', type === 'weekly');
     }
+
+    // 직접 입력 선택 시 텍스트 필드 표시
+    document.getElementById('imageSelect').addEventListener('change', function() {
+        const customInput = document.getElementById('customImage');
+        if (this.value === '__custom__') {
+            customInput.style.display = 'block';
+            customInput.required = true;
+            customInput.focus();
+        } else {
+            customInput.style.display = 'none';
+            customInput.required = false;
+            customInput.value = '';
+        }
+    });
     </script>
 </body>
 </html>

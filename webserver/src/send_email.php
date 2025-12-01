@@ -51,9 +51,27 @@ $stmt->bind_param($types, ...$scanIds);
 $stmt->execute();
 $result = $stmt->get_result();
 
+// 예외 처리 정보 가져오기
+$activeExceptions = getActiveExceptions($conn);
+$exceptedMap = [];
+foreach ($activeExceptions as $ex) {
+    $exceptedMap[$ex['vulnerability_id']] = $ex;
+}
+
 $scans = [];
 while ($row = $result->fetch_assoc()) {
-    $row['vulnerabilities'] = getScanVulnerabilities($conn, $row['id']);
+    $vulns = getScanVulnerabilities($conn, $row['id']);
+    // 예외 처리 정보 추가
+    foreach ($vulns as &$v) {
+        if (isset($exceptedMap[$v['vulnerability']])) {
+            $v['is_excepted'] = true;
+            $v['exception_reason'] = $exceptedMap[$v['vulnerability']]['reason'];
+            $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
+        } else {
+            $v['is_excepted'] = false;
+        }
+    }
+    $row['vulnerabilities'] = $vulns;
     $scans[] = $row;
 }
 $stmt->close();
@@ -74,10 +92,10 @@ $result = sendEmailLocal($toEmail, $subject, $html, $csv, $mailConfig);
 
 echo json_encode($result);
 
-// CSV 생성 함수
+// CSV 생성 함수 (예외 처리 정보 포함)
 function generateCsv($scans) {
     $lines = [];
-    $lines[] = "Image,Scan Date,Library,Vulnerability,Severity,Installed Version,Fixed Version";
+    $lines[] = "Image,Scan Date,Library,Vulnerability,Severity,Installed Version,Fixed Version,Exception Status,Exception Reason,Exception Expires";
 
     foreach ($scans as $scan) {
         $imageName = $scan['image_name'];
@@ -85,18 +103,25 @@ function generateCsv($scans) {
 
         if (!empty($scan['vulnerabilities'])) {
             foreach ($scan['vulnerabilities'] as $v) {
-                $lines[] = sprintf('"%s","%s","%s","%s","%s","%s","%s"',
+                $exStatus = !empty($v['is_excepted']) ? 'EXCEPTED' : '';
+                $exReason = $v['exception_reason'] ?? '';
+                $exExpires = isset($v['exception_expires']) ? date('Y-m-d', strtotime($v['exception_expires'])) : '';
+
+                $lines[] = sprintf('"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"',
                     str_replace('"', '""', $imageName),
                     $scanDate,
                     str_replace('"', '""', $v['library']),
                     str_replace('"', '""', $v['vulnerability']),
                     $v['severity'],
                     str_replace('"', '""', $v['installed_version']),
-                    str_replace('"', '""', $v['fixed_version'] ?: '')
+                    str_replace('"', '""', $v['fixed_version'] ?: ''),
+                    $exStatus,
+                    str_replace('"', '""', $exReason),
+                    $exExpires
                 );
             }
         } else {
-            $lines[] = sprintf('"%s","%s","No vulnerabilities found","","","",""', $imageName, $scanDate);
+            $lines[] = sprintf('"%s","%s","No vulnerabilities found","","","","","","",""', $imageName, $scanDate);
         }
     }
 
@@ -116,12 +141,20 @@ function generateEmailHtml($scans) {
         .high { background: #fd7e14; color: white; padding: 3px 8px; border-radius: 4px; }
         .medium { background: #ffc107; color: #333; padding: 3px 8px; border-radius: 4px; }
         .low { background: #28a745; color: white; padding: 3px 8px; border-radius: 4px; }
+        .excepted-row { background: #e3f2fd; }
+        .exception-badge { background: #1976d2; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-left: 5px; }
     </style></head><body>';
-    
+
     $html .= '<h1>🔒 Trivy 스캔 결과 리포트</h1>';
     $html .= '<p>생성일시: ' . date('Y-m-d H:i:s') . '</p>';
-    
+
     foreach ($scans as $scan) {
+        // 예외 처리된 취약점 수 계산
+        $exceptedCount = 0;
+        foreach ($scan['vulnerabilities'] as $v) {
+            if (!empty($v['is_excepted'])) $exceptedCount++;
+        }
+
         $html .= '<h2>' . htmlspecialchars($scan['image_name']) . '</h2>';
         $html .= '<div class="summary">';
         $html .= '<strong>스캔일시:</strong> ' . $scan['scan_date'] . '<br>';
@@ -130,27 +163,45 @@ function generateEmailHtml($scans) {
         $html .= '<span class="high">H: ' . $scan['high_count'] . '</span> ';
         $html .= '<span class="medium">M: ' . $scan['medium_count'] . '</span> ';
         $html .= '<span class="low">L: ' . $scan['low_count'] . '</span>';
+        if ($exceptedCount > 0) {
+            $html .= ' <span style="background:#1976d2;color:white;padding:3px 8px;border-radius:4px;">🛡️ 예외: ' . $exceptedCount . '</span>';
+        }
         $html .= '</div>';
-        
+
         if (!empty($scan['vulnerabilities'])) {
-            $html .= '<table><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th></tr></thead><tbody>';
+            $html .= '<table><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>Status</th></tr></thead><tbody>';
             foreach ($scan['vulnerabilities'] as $v) {
                 $sevClass = strtolower($v['severity']);
-                $html .= '<tr>';
+                $rowClass = !empty($v['is_excepted']) ? 'excepted-row' : '';
+                $html .= '<tr class="' . $rowClass . '">';
                 $html .= '<td>' . htmlspecialchars($v['library']) . '</td>';
-                $html .= '<td>' . htmlspecialchars($v['vulnerability']) . '</td>';
+                $html .= '<td>' . htmlspecialchars($v['vulnerability']);
+                if (!empty($v['is_excepted'])) {
+                    $html .= '<span class="exception-badge">🛡️예외</span>';
+                }
+                $html .= '</td>';
                 $html .= '<td><span class="' . $sevClass . '">' . $v['severity'] . '</span></td>';
                 $html .= '<td>' . htmlspecialchars($v['installed_version']) . '</td>';
                 $html .= '<td>' . htmlspecialchars($v['fixed_version'] ?: '-') . '</td>';
+                $html .= '<td>';
+                if (!empty($v['is_excepted'])) {
+                    $html .= htmlspecialchars($v['exception_reason'] ?? '');
+                    if (!empty($v['exception_expires'])) {
+                        $html .= '<br><small>만료: ' . date('Y-m-d', strtotime($v['exception_expires'])) . '</small>';
+                    }
+                } else {
+                    $html .= '-';
+                }
+                $html .= '</td>';
                 $html .= '</tr>';
             }
             $html .= '</tbody></table>';
         }
     }
-    
+
     $html .= '<hr><p style="color:#666;font-size:12px;">이 메일은 Trivy Security Scanner에서 자동 발송되었습니다.</p>';
     $html .= '</body></html>';
-    
+
     return $html;
 }
 

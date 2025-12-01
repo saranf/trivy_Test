@@ -234,29 +234,3 @@ environment:
 | `trivy_vulnerabilities_open` | **미조치 취약점 수** |
 | `trivy_misconfigurations_total` | **설정 오류 총 개수** |
 | `trivy_misconfigurations_by_severity` | **심각도별 설정 오류** |
-
----
-
-## 🏆 어필 포인트
-
-### 과장급(Manager Level) 역량 어필
-
-1. **규정 준수 (Governance)**
-   - "단순 취약점 스캐너가 아닌, IaC(Infrastructure as Code) 컴플라이언스까지 관장하는 **통합 보안 플랫폼**"
-
-2. **성과 측정 (Performance)**
-   - "MTTR(평균 조치 기간) 지표를 통해 **보안 운영 성과를 정량적으로 측정** 가능"
-
-3. **내부 통제 (Audit)**
-   - "모든 Critical Action에 대해 **감사 로그를 자동 기록**, 내부 감사 대응 준비"
-
-4. **자동화 (Automation)**
-   - "Docker 이벤트 감지, 주기적 스캔, Critical 알림 등 **운영 부담 최소화**"
-
-### 면접 예상 질문 & 답변
-
-**Q: 이 시스템의 차별점은?**
-> A: 단순히 취약점을 찾는 것에서 그치지 않고, Diff 분석으로 변화를 추적하고, MTTR로 조치 성과를 측정하며, 컴플라이언스 진단까지 **보안 운영의 전체 생명주기를 관리**합니다.
-
-**Q: 실제 운영 환경에서 어떻게 활용?**
-> A: Critical 발견 시 즉시 알림, 예외 처리로 오탐 관리, 주기적 스캔으로 지속적 모니터링, 감사 로그로 책임 추적이 가능합니다.

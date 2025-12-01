@@ -474,12 +474,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'preview') {
 
 // Send API (이메일 발송)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = json_decode(file_get_contents('php://input'), true);
-    $scanId = (int)($data['scan_id'] ?? 0);
-    $toEmail = $data['email'] ?? '';
+    $rawInput = file_get_contents('php://input');
+    $data = json_decode($rawInput, true);
+
+    // JSON 파싱 실패 시 POST 파라미터 확인
+    if (!$data) {
+        $scanId = (int)($_POST['scan_id'] ?? 0);
+        $toEmail = $_POST['email'] ?? '';
+    } else {
+        $scanId = (int)($data['scan_id'] ?? 0);
+        $toEmail = $data['email'] ?? '';
+    }
 
     if ($scanId <= 0 || empty($toEmail)) {
-        echo json_encode(['success' => false, 'message' => 'scan_id와 email이 필요합니다.']);
+        echo json_encode(['success' => false, 'message' => 'scan_id와 email이 필요합니다. (scan_id: ' . $scanId . ', email: ' . $toEmail . ')']);
         exit;
     }
 
