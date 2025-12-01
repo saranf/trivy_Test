@@ -90,9 +90,9 @@ if ($action === 'scan_image') {
         exit;
     }
     
-    $scanId = saveScanResult($conn, $image, $data);
+    $scanId = saveScanResult($conn, $image, $data, 'auto');
     $conn->close();
-    
+
     echo json_encode(['success' => true, 'scanId' => $scanId, 'image' => $image]);
     exit;
 }
@@ -129,7 +129,7 @@ if ($action === 'scan_all') {
         
         $data = runTrivyScan($image);
         if ($data !== null) {
-            $scanId = saveScanResult($conn, $image, $data);
+            $scanId = saveScanResult($conn, $image, $data, 'bulk');
             $results[] = ['image' => $image, 'status' => 'scanned', 'scanId' => $scanId];
             $scannedImages[] = $image;
         } else {

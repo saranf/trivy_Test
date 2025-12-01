@@ -27,9 +27,13 @@ function initDatabase($conn) {
             critical_count INT DEFAULT 0,
             high_count INT DEFAULT 0,
             medium_count INT DEFAULT 0,
-            low_count INT DEFAULT 0
+            low_count INT DEFAULT 0,
+            scan_source VARCHAR(20) DEFAULT 'manual'
         )
     ");
+
+    // 기존 테이블에 scan_source 컬럼 추가
+    $conn->query("ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS scan_source VARCHAR(20) DEFAULT 'manual'");
 
     // 취약점 상세 테이블
     $conn->query("
@@ -52,8 +56,8 @@ function initDatabase($conn) {
     $conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
 }
 
-// 스캔 결과 저장
-function saveScanResult($conn, $imageName, $trivyData) {
+// 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk')
+function saveScanResult($conn, $imageName, $trivyData, $scanSource = 'manual') {
     $counts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
     $vulns = [];
 
@@ -71,8 +75,8 @@ function saveScanResult($conn, $imageName, $trivyData) {
 
     $total = array_sum($counts);
 
-    $stmt = $conn->prepare("INSERT INTO scan_history (image_name, total_vulns, critical_count, high_count, medium_count, low_count) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("siiiii", $imageName, $total, $counts['CRITICAL'], $counts['HIGH'], $counts['MEDIUM'], $counts['LOW']);
+    $stmt = $conn->prepare("INSERT INTO scan_history (image_name, total_vulns, critical_count, high_count, medium_count, low_count, scan_source) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("siiiiss", $imageName, $total, $counts['CRITICAL'], $counts['HIGH'], $counts['MEDIUM'], $counts['LOW'], $scanSource);
     $stmt->execute();
     $scanId = $conn->insert_id;
     $stmt->close();
@@ -93,9 +97,35 @@ function saveScanResult($conn, $imageName, $trivyData) {
     return $scanId;
 }
 
-// 스캔 기록 목록 조회
-function getScanHistory($conn) {
-    $result = $conn->query("SELECT * FROM scan_history ORDER BY scan_date DESC LIMIT 100");
+// 스캔 기록 목록 조회 (검색 지원)
+function getScanHistory($conn, $search = '', $source = '') {
+    $sql = "SELECT * FROM scan_history WHERE 1=1";
+    $params = [];
+    $types = '';
+
+    if (!empty($search)) {
+        $sql .= " AND image_name LIKE ?";
+        $params[] = "%$search%";
+        $types .= 's';
+    }
+
+    if (!empty($source)) {
+        $sql .= " AND scan_source = ?";
+        $params[] = $source;
+        $types .= 's';
+    }
+
+    $sql .= " ORDER BY scan_date DESC LIMIT 100";
+
+    if (!empty($params)) {
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result();
+    } else {
+        $result = $conn->query($sql);
+    }
+
     $history = [];
     while ($row = $result->fetch_assoc()) {
         $history[] = $row;
