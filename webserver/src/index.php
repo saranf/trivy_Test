@@ -104,6 +104,14 @@ initDatabase($conn);
                 <?php endif; ?>
             </div>
 
+            <!-- 보안 진단 대시보드 -->
+            <div class="card" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 2px solid #4ade80;">
+                <h2 style="color: #4ade80;">🛡️ 보안 진단 대시보드</h2>
+                <p style="color: rgba(255,255,255,0.9);">4대 보안영역(이미지/인프라/런타임/컴플라이언스) 현황</p>
+                <a href="./security_dashboard.php" class="btn" style="background: #4ade80; color: #1a1a2e;">진단 현황</a>
+                <a href="./runtime_audit.php" class="btn" style="background: #ef4444; color: white; margin-left: 5px;">런타임 감사</a>
+            </div>
+
             <!-- Admin 전용 -->
             <?php if (isAdmin()): ?>
             <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">

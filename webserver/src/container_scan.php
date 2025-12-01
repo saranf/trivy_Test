@@ -24,12 +24,13 @@ function getRunningContainers() {
 }
 
 // Trivy 스캔 실행 및 Markdown 변환
-function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
+function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL', $scanSecrets = true) {
     $safeTarget = escapeshellarg($imageOrId);
     $safeSeverity = escapeshellarg($severity);
 
-    // Trivy 스캔 실행 (취약점 + 설정오류)
-    $command = "trivy image --no-progress --scanners vuln,misconfig --severity $safeSeverity --format json $safeTarget 2>/dev/null";
+    // Trivy 스캔 실행 (취약점 + 설정오류 + 시크릿)
+    $scanners = $scanSecrets ? 'vuln,misconfig,secret' : 'vuln,misconfig';
+    $command = "trivy image --no-progress --scanners $scanners --severity $safeSeverity --format json $safeTarget 2>/dev/null";
     exec($command, $output, $result_code);
 
     $jsonOutput = implode("\n", $output);
@@ -62,12 +63,14 @@ function convertToMarkdown($data, $target) {
 
     $totalVulns = 0;
     $totalMisconfigs = 0;
+    $totalSecrets = 0;
     $exceptedCount = 0;
     $severityCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
     $misconfigCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
 
     $vulnMd = "";
     $misconfigMd = "";
+    $secretMd = "";
 
     if (!isset($data['Results']) || empty($data['Results'])) {
         $md .= "## ✅ 보안 이슈가 발견되지 않았습니다!\n";
@@ -127,6 +130,25 @@ function convertToMarkdown($data, $target) {
             }
             $misconfigMd .= "\n";
         }
+
+        // 시크릿 (하드코딩된 비밀번호, API 키 등) 처리
+        if (isset($result['Secrets']) && !empty($result['Secrets'])) {
+            $secretMd .= "### 🔐 " . ($result['Target'] ?? 'Unknown') . "\n\n";
+            $secretMd .= "| 심각도 | 유형 | 파일 경로 | 매칭 |\n";
+            $secretMd .= "|:------:|------|----------|------|\n";
+
+            foreach ($result['Secrets'] as $secret) {
+                $severity = $secret['Severity'] ?? 'HIGH';
+                $severityIcon = getSeverityIcon($severity);
+                $ruleId = $secret['RuleID'] ?? $secret['Category'] ?? 'Secret';
+                $title = $secret['Title'] ?? $ruleId;
+                $match = substr($secret['Match'] ?? '***', 0, 30) . '...';
+
+                $secretMd .= "| $severityIcon $severity | $title | " . ($result['Target'] ?? '') . " | `$match` |\n";
+                $totalSecrets++;
+            }
+            $secretMd .= "\n";
+        }
     }
 
     // 요약
@@ -152,6 +174,13 @@ function convertToMarkdown($data, $target) {
         $summary .= "\n";
     }
 
+    if ($totalSecrets > 0) {
+        $summary .= "### 🔐 시크릿 (하드코딩된 비밀정보)\n";
+        $summary .= "- **총 시크릿**: $totalSecrets 개\n";
+        $summary .= "- ⚠️ API 키, 비밀번호, 토큰 등이 코드에 하드코딩됨\n";
+        $summary .= "\n";
+    }
+
     // 탭 구분으로 출력
     $output = $summary;
     if ($totalVulns > 0) {
@@ -160,7 +189,10 @@ function convertToMarkdown($data, $target) {
     if ($totalMisconfigs > 0) {
         $output .= "---\n\n## 👮 컴플라이언스 (설정/보안위규)\n\n" . $misconfigMd;
     }
-    if ($totalVulns == 0 && $totalMisconfigs == 0) {
+    if ($totalSecrets > 0) {
+        $output .= "---\n\n## 🔐 시크릿 탐지 (Secret Detection)\n\n" . $secretMd;
+    }
+    if ($totalVulns == 0 && $totalMisconfigs == 0 && $totalSecrets == 0) {
         $output .= "## ✅ 보안 이슈가 발견되지 않았습니다!\n";
     }
 
