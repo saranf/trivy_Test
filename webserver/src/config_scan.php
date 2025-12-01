@@ -2,7 +2,7 @@
 /**
  * 👮 컴플라이언스 스캔 (Compliance & Misconfig Scanner)
  * - 설정 오류(Misconfig) 스캔: Dockerfile, K8s, Terraform 등
- * - 컴플라이언스 표준 체크: Docker CIS, K8s CIS, PCI-DSS 등
+ * - 보안 모범사례 검사: 이미지 내 보안 설정 검증
  */
 require_once 'auth.php';
 $user = requireRole('operator');
@@ -11,10 +11,11 @@ require_once 'db_functions.php';
 
 header('Content-Type: text/html; charset=utf-8');
 
-// 지원하는 컴플라이언스 표준
+// 지원하는 보안 검사 유형
 $complianceStandards = [
-    'docker-cis-1.6' => ['name' => 'Docker CIS Benchmark 1.6', 'icon' => '🐳', 'type' => 'image'],
-    'docker-cis' => ['name' => 'Docker CIS Benchmark (Latest)', 'icon' => '🐳', 'type' => 'image'],
+    'security-checks' => ['name' => '🔒 보안 모범사례 검사', 'icon' => '🛡️', 'desc' => 'Dockerfile, 설정파일 보안 검사'],
+    'secret-scan' => ['name' => '🔐 시크릿 탐지', 'icon' => '🔑', 'desc' => 'API키, 비밀번호, 토큰 탐지'],
+    'full-scan' => ['name' => '📋 종합 보안 스캔', 'icon' => '📊', 'desc' => '취약점 + 설정오류 + 시크릿'],
 ];
 
 // 지원하는 샘플 Dockerfile/Config 목록 (컨테이너 내부 경로)
@@ -44,32 +45,52 @@ function scanConfig($path, $severity = 'HIGH,CRITICAL') {
     ];
 }
 
-// Trivy 컴플라이언스 표준 체크 (Docker CIS 등)
-function scanCompliance($target, $standard = 'docker-cis-1.6') {
+// Trivy 보안 검사 (misconfig, secret, vuln)
+function scanCompliance($target, $scanType = 'security-checks') {
     $safeTarget = escapeshellarg($target);
-    $safeStandard = escapeshellarg($standard);
 
-    // Trivy compliance 스캔
-    $command = "trivy image --compliance $safeStandard --format json $safeTarget 2>&1";
+    // 스캔 유형에 따른 명령어 구성
+    switch ($scanType) {
+        case 'secret-scan':
+            $scanners = 'secret';
+            break;
+        case 'full-scan':
+            $scanners = 'vuln,misconfig,secret';
+            break;
+        case 'security-checks':
+        default:
+            $scanners = 'misconfig,secret';
+            break;
+    }
+
+    // Trivy 스캔 실행
+    $command = "trivy image --scanners $scanners --format json $safeTarget 2>&1";
     exec($command, $output, $resultCode);
 
     $jsonOutput = implode("\n", $output);
     $data = json_decode($jsonOutput, true);
 
     return [
-        'success' => $data !== null,
+        'success' => $data !== null && $resultCode === 0,
         'data' => $data,
         'raw' => $jsonOutput,
         'target' => $target,
-        'standard' => $standard
+        'scanType' => $scanType
     ];
 }
 
-// 컴플라이언스 결과를 Markdown으로 변환
-function convertComplianceToMarkdown($data, $target, $standard) {
-    $md = "# 📋 컴플라이언스 체크 결과\n\n";
+// 보안 검사 결과를 Markdown으로 변환
+function convertComplianceToMarkdown($data, $target, $scanType) {
+    $scanTypeNames = [
+        'security-checks' => '🔒 보안 모범사례 검사',
+        'secret-scan' => '🔐 시크릿 탐지',
+        'full-scan' => '📋 종합 보안 스캔'
+    ];
+    $typeName = $scanTypeNames[$scanType] ?? $scanType;
+
+    $md = "# $typeName 결과\n\n";
     $md .= "**대상 이미지**: `$target`\n\n";
-    $md .= "**컴플라이언스 표준**: `$standard`\n\n";
+    $md .= "**검사 유형**: `$typeName`\n\n";
     $md .= "**스캔 시간**: " . date('Y-m-d H:i:s') . "\n\n";
     $md .= "---\n\n";
 
@@ -249,26 +270,26 @@ if ($action === 'scan') {
     exit;
 }
 
-// 컴플라이언스 표준 체크 API
+// 보안 검사 API
 if ($action === 'compliance') {
     header('Content-Type: application/json');
     $target = $_GET['target'] ?? '';
-    $standard = $_GET['standard'] ?? 'docker-cis-1.6';
+    $scanType = $_GET['standard'] ?? 'security-checks';
 
     if (empty($target)) {
         echo json_encode(['success' => false, 'markdown' => "# ❌ 오류\n\n대상 이미지를 지정해주세요."]);
         exit;
     }
 
-    $result = scanCompliance($target, $standard);
+    $result = scanCompliance($target, $scanType);
 
     if ($result['success']) {
-        $markdown = convertComplianceToMarkdown($result['data'], $target, $standard);
+        $markdown = convertComplianceToMarkdown($result['data'], $target, $scanType);
     } else {
-        $markdown = "## ❌ 컴플라이언스 체크 실패\n\n```\n{$result['raw']}\n```\n\n";
+        $markdown = "## ❌ 보안 검사 실패\n\n```\n{$result['raw']}\n```\n\n";
         $markdown .= "**가능한 원인**:\n";
         $markdown .= "- 이미지를 찾을 수 없음\n";
-        $markdown .= "- 해당 컴플라이언스 표준이 지원되지 않음\n";
+        $markdown .= "- 이미지를 pull 할 수 없음 (권한, 네트워크 문제)\n";
     }
 
     echo json_encode([
@@ -438,37 +459,43 @@ function saveConfigScanResult($conn, $path, $data) {
             <a href="config_scan.php" class="tab active">👮 컴플라이언스 스캔</a>
         </div>
 
-        <h1>👮 컴플라이언스 & 설정 오류 스캔</h1>
+        <h1>👮 보안 검사 & 설정 오류 스캔</h1>
 
         <!-- 스캔 타입 선택 탭 -->
         <div class="scan-tabs">
-            <button class="scan-tab active" onclick="switchTab('compliance')">📋 컴플라이언스 표준</button>
+            <button class="scan-tab active" onclick="switchTab('compliance')">🔒 보안 검사</button>
             <button class="scan-tab" onclick="switchTab('misconfig')">⚙️ 설정 오류 스캔</button>
         </div>
 
-        <!-- 컴플라이언스 표준 체크 패널 -->
+        <!-- 보안 검사 패널 -->
         <div id="compliancePanel" class="scan-panel active">
             <div class="info-box" style="background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);">
-                <h2>📋 컴플라이언스 표준 체크</h2>
-                <p>Docker 이미지가 보안 표준(CIS Benchmark, PCI-DSS 등)을 준수하는지 검사합니다.</p>
+                <h2>🔒 이미지 보안 검사</h2>
+                <p>Docker 이미지 내 보안 설정 오류와 민감 정보를 탐지합니다.</p>
                 <ul>
-                    <li>🐳 <strong>Docker CIS</strong>: Docker 컨테이너 보안 벤치마크</li>
-                    <li>🔒 <strong>보안 모범사례</strong>: 권한, 네트워크, 파일시스템 설정 검증</li>
+                    <li>🛡️ <strong>보안 모범사례</strong>: Dockerfile, 설정 파일 보안 검사</li>
+                    <li>🔐 <strong>시크릿 탐지</strong>: API 키, 비밀번호, 토큰 등 하드코딩된 민감정보</li>
+                    <li>📋 <strong>종합 스캔</strong>: 취약점 + 설정오류 + 시크릿 통합 검사</li>
                 </ul>
             </div>
 
             <div class="controls">
-                <h3 style="margin-top:0;">1️⃣ 컴플라이언스 표준 선택</h3>
+                <h3 style="margin-top:0;">1️⃣ 검사 유형 선택</h3>
                 <div class="compliance-cards">
-                    <div class="compliance-card selected" onclick="selectStandard(this, 'docker-cis-1.6')">
-                        <div class="icon">🐳</div>
-                        <h3>Docker CIS Benchmark 1.6</h3>
-                        <p>CIS Docker Benchmark v1.6.0 기반 컨테이너 보안 검사</p>
+                    <div class="compliance-card selected" onclick="selectStandard(this, 'security-checks')">
+                        <div class="icon">🛡️</div>
+                        <h3>보안 모범사례 검사</h3>
+                        <p>Dockerfile, 설정파일 보안 검사 (Misconfig + Secret)</p>
                     </div>
-                    <div class="compliance-card" onclick="selectStandard(this, 'docker-cis')">
-                        <div class="icon">🐳</div>
-                        <h3>Docker CIS (Latest)</h3>
-                        <p>최신 Docker CIS Benchmark 적용</p>
+                    <div class="compliance-card" onclick="selectStandard(this, 'secret-scan')">
+                        <div class="icon">🔐</div>
+                        <h3>시크릿 탐지 전용</h3>
+                        <p>API키, 비밀번호, 토큰 등 민감정보만 집중 탐지</p>
+                    </div>
+                    <div class="compliance-card" onclick="selectStandard(this, 'full-scan')">
+                        <div class="icon">📋</div>
+                        <h3>종합 보안 스캔</h3>
+                        <p>취약점 + 설정오류 + 시크릿 전체 검사</p>
                     </div>
                 </div>
 
@@ -485,7 +512,7 @@ function saveConfigScanResult($conn, $path, $data) {
                         }
                         ?>
                     </select>
-                    <button onclick="runComplianceCheck()" id="complianceBtn">📋 컴플라이언스 체크</button>
+                    <button onclick="runComplianceCheck()" id="complianceBtn">🔒 보안 검사 시작</button>
                 </div>
             </div>
         </div>
@@ -542,7 +569,13 @@ function saveConfigScanResult($conn, $path, $data) {
     <script>
         let lastScanData = null;
         let lastScanPath = null;
-        let selectedStandard = 'docker-cis-1.6';
+        let selectedStandard = 'security-checks';
+
+        const scanTypeNames = {
+            'security-checks': '🛡️ 보안 모범사례 검사',
+            'secret-scan': '🔐 시크릿 탐지',
+            'full-scan': '📋 종합 보안 스캔'
+        };
 
         // 탭 전환
         function switchTab(tab) {
@@ -558,14 +591,14 @@ function saveConfigScanResult($conn, $path, $data) {
             }
         }
 
-        // 컴플라이언스 표준 선택
+        // 검사 유형 선택
         function selectStandard(el, standard) {
             document.querySelectorAll('.compliance-card').forEach(c => c.classList.remove('selected'));
             el.classList.add('selected');
             selectedStandard = standard;
         }
 
-        // 컴플라이언스 체크 실행
+        // 보안 검사 실행
         async function runComplianceCheck() {
             const target = document.getElementById('complianceTarget').value;
             const resultDiv = document.getElementById('result');
@@ -579,8 +612,9 @@ function saveConfigScanResult($conn, $path, $data) {
             document.getElementById('saveMessage').style.display = 'none';
 
             btn.disabled = true;
-            btn.textContent = '⏳ 체크 중...';
-            resultDiv.innerHTML = '<div class="loading">📋 컴플라이언스 표준 검사 중...<br><small>(' + selectedStandard + ')</small></div>';
+            btn.textContent = '⏳ 검사 중...';
+            const typeName = scanTypeNames[selectedStandard] || selectedStandard;
+            resultDiv.innerHTML = '<div class="loading">' + typeName + ' 진행 중...<br><small>(잠시만 기다려 주세요)</small></div>';
 
             try {
                 const response = await fetch(`config_scan.php?action=compliance&target=${encodeURIComponent(target)}&standard=${encodeURIComponent(selectedStandard)}`);
@@ -591,7 +625,7 @@ function saveConfigScanResult($conn, $path, $data) {
             }
 
             btn.disabled = false;
-            btn.textContent = '📋 컴플라이언스 체크';
+            btn.textContent = '🔒 보안 검사 시작';
         }
 
         function setPath(path) {

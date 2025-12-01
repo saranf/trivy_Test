@@ -5,7 +5,6 @@
  * - 실시간 Trivy 스캔으로 SBOM 생성
  */
 
-session_start();
 require_once 'db_functions.php';
 require_once 'auth.php';
 
@@ -91,8 +90,17 @@ if (empty($output)) {
 // JSON 유효성 검사
 $json = json_decode($output);
 if (json_last_error() !== JSON_ERROR_NONE) {
+    // 오류 메시지를 로그에 남기고 사용자에게 상세 정보 제공
+    error_log("SBOM JSON parse error for $imageName: " . json_last_error_msg());
     http_response_code(500);
-    die('SBOM JSON 파싱 실패');
+    echo "SBOM 생성 중 오류가 발생했습니다.\n";
+    echo "이미지: " . htmlspecialchars($imageName) . "\n";
+    echo "오류: " . json_last_error_msg() . "\n";
+    echo "\n가능한 원인:\n";
+    echo "- 이미지가 로컬에 없어서 pull이 필요\n";
+    echo "- 이미지 이름이 잘못됨\n";
+    echo "- Trivy 스캔 중 오류 발생\n";
+    exit;
 }
 
 // 파일명 생성 (이미지명에서 특수문자 제거)
@@ -100,7 +108,9 @@ $safeFileName = preg_replace('/[^a-zA-Z0-9\-_]/', '_', $imageName);
 $fileName = "sbom-{$safeFileName}-" . date('Ymd-His') . ".{$extension}";
 
 // 감사 로그
-logAudit($conn, 'DOWNLOAD_SBOM', 'image', $imageName, "Format: $format");
+if (isset($_SESSION['user'])) {
+    logAudit($conn, $_SESSION['user']['id'], $_SESSION['user']['username'], 'DOWNLOAD_SBOM', 'image', $imageName, "Format: $format");
+}
 
 // 다운로드 헤더
 header('Content-Type: application/json');

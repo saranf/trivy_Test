@@ -64,7 +64,7 @@ curl "http://localhost:6987/reset_demo.php?key=trivy_demo_reset_2024"
 | 메인 대시보드 | `/index.php` | Viewer |
 | 스캔 기록 | `/scan_history.php` | Viewer |
 | 컨테이너 스캔 | `/container_scan.php` | Demo |
-| **컴플라이언스 스캔** | `/config_scan.php` | Demo |
+| **보안 검사 & 설정 오류** | `/config_scan.php` | Demo |
 | 예외 처리 관리 | `/exceptions.php` | Demo |
 | Diff 리포트 | `/send_diff_report.php` | Demo |
 | **주기적 스캔 설정** | `/scheduled_scans.php` | Admin |
@@ -130,15 +130,16 @@ curl "http://localhost:6987/reset_demo.php?key=trivy_demo_reset_2024"
 - 활성화/비활성화 토글 가능
 - 마지막 실행 시간 및 다음 실행 시간 표시
 
-### 5. 👮 컴플라이언스 진단 (Compliance Check)
-- **전용 컴플라이언스 스캔 페이지** (`config_scan.php`)
+### 5. 👮 보안 검사 & 설정 오류 스캔 (config_scan.php)
 
-#### 📋 컴플라이언스 표준 체크
-Docker 이미지가 보안 표준을 준수하는지 검사:
-- **Docker CIS Benchmark 1.6**: CIS Docker 보안 벤치마크
-- **Docker CIS (Latest)**: 최신 CIS 표준 적용
-- **검사 항목**: 권한 설정, 네트워크 구성, 파일시스템 보안 등
-- **결과 표시**: 준수(PASS) / 미준수(FAIL) 개수, 준수율(%)
+#### � 이미지 보안 검사
+Docker 이미지 내 보안 설정 오류와 민감 정보를 탐지:
+
+| 검사 유형 | 설명 |
+|-----------|------|
+| 🛡️ **보안 모범사례 검사** | Dockerfile, 설정파일 보안 검사 (Misconfig + Secret) |
+| 🔐 **시크릿 탐지 전용** | API키, 비밀번호, 토큰 등 민감정보 집중 탐지 |
+| 📋 **종합 보안 스캔** | 취약점 + 설정오류 + 시크릿 전체 검사 |
 
 #### ⚙️ 설정 오류 스캔 (Misconfig)
 IaC 파일의 보안 설정 오류 탐지:
@@ -147,8 +148,8 @@ IaC 파일의 보안 설정 오류 탐지:
 - 🏗️ **Terraform/CloudFormation**: 퍼블릭 버킷, 암호화 미설정, 보안 그룹 규칙
 
 #### 사용 방법
-1. 메인 페이지 → "👮 컴플라이언스 스캔" 클릭
-2. **컴플라이언스 표준 탭**: 표준 선택 → 이미지 선택 → 체크 실행
+1. 메인 페이지 → "👮 보안 검사" 클릭
+2. **보안 검사 탭**: 검사 유형 선택 → 이미지 선택 → 검사 실행
 3. **설정 오류 스캔 탭**: 경로 입력 → 스캔 실행
 4. 스캔 기록에서 `👮설정` 태그로 구분
 

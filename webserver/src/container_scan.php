@@ -381,8 +381,6 @@ $containers = getRunningContainers();
             <div style="display:flex; flex-wrap:wrap; gap:10px;">
                 <a id="grafanaContainerLink" href="#" target="_blank" style="display:inline-block; background:white; color:#667eea; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold;">🐳 이 컨테이너 메트릭</a>
                 <a id="lokiContainerLink" href="#" target="_blank" style="display:inline-block; background:#4ade80; color:#1a1a2e; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold;">📋 이 컨테이너 로그</a>
-                <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 메트릭 대시보드</a>
-                <a href="http://monitor.rmstudio.co.kr:3000/d/loki-logs/container-logs-loki?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">🔭 로그 대시보드</a>
             </div>
         </div>
     </div>

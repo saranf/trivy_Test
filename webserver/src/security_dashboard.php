@@ -10,18 +10,29 @@ require_once 'db_functions.php';
 $conn = getDbConnection();
 
 // 1. 이미지 보안 - 스캔 통계
-$imageStats = $conn->query("SELECT 
+$imageStats = $conn->query("SELECT
     COUNT(DISTINCT image_name) as images_scanned,
     COUNT(*) as total_scans,
-    (SELECT COUNT(*) FROM scan_results WHERE severity IN ('CRITICAL','HIGH')) as high_vulns
+    (SELECT COUNT(*) FROM scan_vulnerabilities WHERE severity IN ('CRITICAL','HIGH')) as high_vulns
 FROM scan_history")->fetch_assoc();
 
-// 2. 인프라 보안 - Misconfig 통계
-$misconfigStats = $conn->query("SELECT 
-    COUNT(*) as total_misconfigs,
-    SUM(CASE WHEN severity = 'CRITICAL' THEN 1 ELSE 0 END) as critical,
-    SUM(CASE WHEN severity = 'HIGH' THEN 1 ELSE 0 END) as high
-FROM scan_misconfigs")->fetch_assoc();
+if (!$imageStats) {
+    $imageStats = ['images_scanned' => 0, 'total_scans' => 0, 'high_vulns' => 0];
+}
+
+// 2. 인프라 보안 - Misconfig 통계 (테이블 존재 여부 확인)
+$misconfigStats = ['total_misconfigs' => 0, 'critical' => 0, 'high' => 0];
+$tableCheck = $conn->query("SHOW TABLES LIKE 'scan_misconfigs'");
+if ($tableCheck && $tableCheck->num_rows > 0) {
+    $result = $conn->query("SELECT
+        COUNT(*) as total_misconfigs,
+        SUM(CASE WHEN severity = 'CRITICAL' THEN 1 ELSE 0 END) as critical,
+        SUM(CASE WHEN severity = 'HIGH' THEN 1 ELSE 0 END) as high
+    FROM scan_misconfigs");
+    if ($result) {
+        $misconfigStats = $result->fetch_assoc() ?: $misconfigStats;
+    }
+}
 
 // 3. 런타임 보안 - 실행 중인 컨테이너 정보
 exec("docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}'", $containers);
