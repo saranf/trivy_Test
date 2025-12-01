@@ -121,7 +121,11 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
 </head>
 <body>
     <div class="container">
-        <div class="back-link"><a href="index.php">← 메인으로</a> | <a href="container_scan.php">컨테이너 스캔</a></div>
+        <div class="back-link">
+            <a href="index.php">← 메인으로</a> |
+            <a href="container_scan.php">컨테이너 스캔</a> |
+            <a href="exceptions.php">🛡️ 예외 관리</a>
+        </div>
         <h1>📋 스캔 기록</h1>
 
         <div class="search-box">
@@ -278,10 +282,17 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
             const res = await fetch('?action=detail&id=' + scanId);
             const data = await res.json();
 
-            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>Title</th></tr></thead><tbody>';
+            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>예외처리</th></tr></thead><tbody>';
             data.forEach(v => {
                 const badgeClass = v.severity.toLowerCase();
-                html += `<tr><td>${v.library}</td><td>${v.vulnerability}</td><td><span class="badge ${badgeClass}">${v.severity}</span></td><td>${v.installed_version}</td><td>${v.fixed_version || '-'}</td><td>${v.title || '-'}</td></tr>`;
+                html += `<tr>
+                    <td>${v.library}</td>
+                    <td>${v.vulnerability}</td>
+                    <td><span class="badge ${badgeClass}">${v.severity}</span></td>
+                    <td>${v.installed_version}</td>
+                    <td>${v.fixed_version || '-'}</td>
+                    <td><button class="btn" style="background:#6c757d;font-size:11px;" onclick="showExceptionModal('${v.vulnerability}', '${v.library}')">🛡️ 예외</button></td>
+                </tr>`;
             });
             html += '</tbody></table>';
 
@@ -296,7 +307,83 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
         window.onclick = function(e) {
             if (e.target == document.getElementById('modal')) closeModal();
             if (e.target == document.getElementById('emailModal')) closeEmailModal();
+            if (e.target == document.getElementById('exceptionModal')) closeExceptionModal();
+        }
+
+        // 예외 처리 모달
+        function showExceptionModal(vulnId, library) {
+            document.getElementById('exceptionVulnId').value = vulnId;
+            document.getElementById('exceptionLibrary').textContent = library;
+            document.getElementById('exceptionVulnDisplay').textContent = vulnId;
+            document.getElementById('exceptionStatus').textContent = '';
+            document.getElementById('exceptionModal').style.display = 'block';
+        }
+
+        function closeExceptionModal() {
+            document.getElementById('exceptionModal').style.display = 'none';
+        }
+
+        async function addException() {
+            const vulnId = document.getElementById('exceptionVulnId').value;
+            const reason = document.getElementById('exceptionReason').value.trim();
+            const expiresAt = document.getElementById('exceptionExpires').value;
+            const status = document.getElementById('exceptionStatus');
+
+            if (!reason) {
+                status.innerHTML = '<span style="color:red;">사유를 입력하세요.</span>';
+                return;
+            }
+            if (!expiresAt) {
+                status.innerHTML = '<span style="color:red;">만료일을 선택하세요.</span>';
+                return;
+            }
+
+            status.innerHTML = '<span style="color:#666;">등록 중...</span>';
+
+            try {
+                const res = await fetch('exception_api.php?action=add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        vulnerability_id: vulnId,
+                        image_pattern: '*',
+                        reason: reason,
+                        expires_at: expiresAt + ' 23:59:59'
+                    })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    status.innerHTML = '<span style="color:green;">✅ ' + result.message + '</span>';
+                    setTimeout(() => {
+                        closeExceptionModal();
+                        closeModal();
+                    }, 1500);
+                } else {
+                    status.innerHTML = '<span style="color:red;">❌ ' + result.message + '</span>';
+                }
+            } catch (e) {
+                status.innerHTML = '<span style="color:red;">❌ 오류: ' + e.message + '</span>';
+            }
         }
     </script>
+
+    <!-- 예외 처리 모달 -->
+    <div id="exceptionModal" class="email-modal">
+        <div class="email-modal-content">
+            <h2>🛡️ 예외 처리 등록</h2>
+            <p><strong>취약점:</strong> <span id="exceptionVulnDisplay"></span></p>
+            <p><strong>라이브러리:</strong> <span id="exceptionLibrary"></span></p>
+            <input type="hidden" id="exceptionVulnId">
+            <textarea id="exceptionReason" placeholder="예외 처리 사유 (예: 내부망 전용 서비스, 벤더 패치 대기 중)" style="width:100%;height:80px;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:4px;"></textarea>
+            <label>만료일:</label>
+            <input type="date" id="exceptionExpires" style="width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:4px;">
+            <div class="email-modal-buttons">
+                <button class="btn-cancel" onclick="closeExceptionModal()">취소</button>
+                <button class="btn-send" style="background:#28a745;" onclick="addException()">등록</button>
+            </div>
+            <div id="exceptionStatus" style="margin-top:15px;"></div>
+        </div>
+    </div>
 </body>
 </html>

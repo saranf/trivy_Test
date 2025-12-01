@@ -41,9 +41,9 @@
             </div>
 
             <div class="card">
-                <h2>Scan Monitor & Diff</h2>
-                <p>이미지별 스캔 모니터링 및 이전/최신 스캔 비교</p>
-                <a href="./scan_monitor.php" class="btn purple">모니터링 & Diff</a>
+                <h2>🛡️ 예외 처리 관리</h2>
+                <p>오탐/비즈니스 사유로 기간 한정 예외 처리 관리</p>
+                <a href="./exceptions.php" class="btn purple">예외 관리</a>
             </div>
 
             <div class="card">

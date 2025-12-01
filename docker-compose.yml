@@ -26,6 +26,8 @@ services:
     environment:
       - FROM_EMAIL=trivy-scanner@monitor.rmstudio.co.kr
       - FROM_NAME=Trivy Scanner
+      - ALERT_EMAIL=qorwlsdk1995@naver.com
+      - ALERT_ON_CRITICAL=true
     depends_on:
       - mysql
     networks:

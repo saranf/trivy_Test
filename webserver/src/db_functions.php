@@ -58,6 +58,23 @@ function initDatabase($conn) {
         )
     ");
 
+    // 예외 처리 테이블 (Risk Acceptance)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS vulnerability_exceptions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            vulnerability_id VARCHAR(255) NOT NULL,
+            image_pattern VARCHAR(255) DEFAULT '*',
+            reason TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            created_by VARCHAR(100) DEFAULT 'admin',
+            is_active TINYINT(1) DEFAULT 1,
+            INDEX idx_vuln_id (vulnerability_id),
+            INDEX idx_expires (expires_at),
+            INDEX idx_active (is_active)
+        )
+    ");
+
     // 기존 테이블 컬럼 크기 수정 (이미 테이블이 있는 경우) - 에러 무시
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY library VARCHAR(500)");
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
@@ -262,5 +279,123 @@ function getScansForImage($conn, $imageName) {
     }
     $stmt->close();
     return $scans;
+}
+
+// =====================================================
+// 예외 처리 (Risk Acceptance) 함수들
+// =====================================================
+
+// 예외 등록
+function addException($conn, $vulnId, $imagePattern, $reason, $expiresAt, $createdBy = 'admin') {
+    $stmt = $conn->prepare("INSERT INTO vulnerability_exceptions (vulnerability_id, image_pattern, reason, expires_at, created_by) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssss", $vulnId, $imagePattern, $reason, $expiresAt, $createdBy);
+    $stmt->execute();
+    $id = $conn->insert_id;
+    $stmt->close();
+    return $id;
+}
+
+// 활성 예외 목록 조회
+function getActiveExceptions($conn) {
+    $result = $conn->query("
+        SELECT * FROM vulnerability_exceptions
+        WHERE is_active = 1 AND expires_at > NOW()
+        ORDER BY created_at DESC
+    ");
+    $exceptions = [];
+    while ($row = $result->fetch_assoc()) {
+        $exceptions[] = $row;
+    }
+    return $exceptions;
+}
+
+// 만료된 예외 조회 (재알림용)
+function getExpiredExceptions($conn) {
+    $result = $conn->query("
+        SELECT * FROM vulnerability_exceptions
+        WHERE is_active = 1 AND expires_at <= NOW()
+        ORDER BY expires_at DESC
+    ");
+    $exceptions = [];
+    while ($row = $result->fetch_assoc()) {
+        $exceptions[] = $row;
+    }
+    return $exceptions;
+}
+
+// 특정 취약점이 예외 처리되어 있는지 확인
+function isExcepted($conn, $vulnId, $imageName = null) {
+    $sql = "SELECT id FROM vulnerability_exceptions WHERE vulnerability_id = ? AND is_active = 1 AND expires_at > NOW()";
+    if ($imageName) {
+        $sql .= " AND (image_pattern = '*' OR image_pattern = ? OR ? LIKE REPLACE(image_pattern, '*', '%'))";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sss", $vulnId, $imageName, $imageName);
+    } else {
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("s", $vulnId);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $excepted = $result->num_rows > 0;
+    $stmt->close();
+    return $excepted;
+}
+
+// 예외 삭제 (비활성화)
+function deleteException($conn, $exceptionId) {
+    $stmt = $conn->prepare("UPDATE vulnerability_exceptions SET is_active = 0 WHERE id = ?");
+    $stmt->bind_param("i", $exceptionId);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// 만료된 예외 마킹 및 반환 (배치 처리용)
+function processExpiredExceptions($conn) {
+    // 만료된 예외 조회
+    $expired = getExpiredExceptions($conn);
+
+    // 만료된 예외 비활성화
+    if (!empty($expired)) {
+        $conn->query("UPDATE vulnerability_exceptions SET is_active = 0 WHERE expires_at <= NOW()");
+    }
+
+    return $expired;
+}
+
+// 예외 처리된 취약점 제외하고 조회
+function getScanVulnerabilitiesFiltered($conn, $scanId, $imageName = null, $includeExcepted = false) {
+    $vulns = getScanVulnerabilities($conn, $scanId);
+
+    if ($includeExcepted) {
+        // 예외 여부 표시 추가
+        foreach ($vulns as &$v) {
+            $v['is_excepted'] = isExcepted($conn, $v['vulnerability'], $imageName);
+        }
+        return $vulns;
+    }
+
+    // 예외 처리된 항목 제외
+    return array_filter($vulns, function($v) use ($conn, $imageName) {
+        return !isExcepted($conn, $v['vulnerability'], $imageName);
+    });
+}
+
+// 모든 예외 목록 조회 (만료 포함)
+function getAllExceptions($conn) {
+    $result = $conn->query("
+        SELECT *,
+            CASE
+                WHEN expires_at <= NOW() THEN 'expired'
+                WHEN is_active = 0 THEN 'deleted'
+                ELSE 'active'
+            END as status
+        FROM vulnerability_exceptions
+        ORDER BY created_at DESC
+    ");
+    $exceptions = [];
+    while ($row = $result->fetch_assoc()) {
+        $exceptions[] = $row;
+    }
+    return $exceptions;
 }
 
