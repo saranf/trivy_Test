@@ -24,10 +24,12 @@ set_exception_handler(function($e) {
 });
 
 require_once 'db_functions.php';
+require_once 'webhook.php';
 
 // 알림 설정
 $ALERT_EMAIL = getenv('ALERT_EMAIL') ?: '';  // 관리자 이메일
 $ALERT_ON_CRITICAL = getenv('ALERT_ON_CRITICAL') !== 'false';  // Critical 알림 활성화
+$ALERT_THRESHOLD = getenv('ALERT_THRESHOLD') ?: 'HIGH';  // 알림 기준 (CRITICAL, HIGH)
 
 // Trivy 스캔 실행 (v0.29.2 호환)
 function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {
@@ -129,12 +131,27 @@ if ($action === 'scan_image') {
 
     $scanId = saveScanResult($conn, $image, $data, 'auto');
 
-    // Critical 취약점 체크 및 알림 발송
-    $criticalCount = countCriticalVulns($data);
-    $alertSent = false;
+    // 취약점 카운트
+    $counts = countVulnsBySeverity($data);
+    $criticalCount = $counts['CRITICAL'];
+    $highCount = $counts['HIGH'];
+    $totalVulns = array_sum($counts);
 
+    $alertSent = false;
+    $webhookSent = false;
+
+    // 이메일 알림 (Critical만)
     if ($criticalCount > 0 && $ALERT_ON_CRITICAL && !empty($ALERT_EMAIL)) {
         $alertSent = sendCriticalAlert($scanId, $image, $criticalCount, $ALERT_EMAIL);
+    }
+
+    // Slack Webhook 알림 (설정된 임계값 이상)
+    $shouldAlert = ($ALERT_THRESHOLD === 'CRITICAL' && $criticalCount > 0) ||
+                   ($ALERT_THRESHOLD === 'HIGH' && ($criticalCount > 0 || $highCount > 0));
+
+    if ($shouldAlert && isWebhookConfigured()) {
+        $webhookResult = sendScanAlert($image, $criticalCount, $highCount, $totalVulns, 'auto');
+        $webhookSent = $webhookResult['success'] ?? false;
     }
 
     $conn->close();
@@ -144,9 +161,28 @@ if ($action === 'scan_image') {
         'scanId' => $scanId,
         'image' => $image,
         'critical_count' => $criticalCount,
-        'alert_sent' => $alertSent
+        'high_count' => $highCount,
+        'total_vulns' => $totalVulns,
+        'alert_sent' => $alertSent,
+        'webhook_sent' => $webhookSent
     ]);
     exit;
+}
+
+// 심각도별 취약점 카운트
+function countVulnsBySeverity($data) {
+    $counts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
+    if (isset($data['Results'])) {
+        foreach ($data['Results'] as $result) {
+            if (isset($result['Vulnerabilities'])) {
+                foreach ($result['Vulnerabilities'] as $v) {
+                    $sev = $v['Severity'] ?? 'UNKNOWN';
+                    if (isset($counts[$sev])) $counts[$sev]++;
+                }
+            }
+        }
+    }
+    return $counts;
 }
 
 // 모든 실행 중인 컨테이너 스캔
@@ -182,22 +218,51 @@ if ($action === 'scan_all') {
         $data = runTrivyScan($image);
         if ($data !== null) {
             $scanId = saveScanResult($conn, $image, $data, 'bulk');
-            $results[] = ['image' => $image, 'status' => 'scanned', 'scanId' => $scanId];
+            $counts = countVulnsBySeverity($data);
+            $results[] = [
+                'image' => $image,
+                'status' => 'scanned',
+                'scanId' => $scanId,
+                'critical' => $counts['CRITICAL'],
+                'high' => $counts['HIGH']
+            ];
             $scannedImages[] = $image;
         } else {
             $results[] = ['image' => $image, 'status' => 'failed'];
         }
     }
 
+    // 통계 계산
+    $scannedCount = count(array_filter($results, fn($r) => $r['status'] === 'scanned'));
+    $failedCount = count(array_filter($results, fn($r) => $r['status'] === 'failed'));
+    $totalCritical = array_sum(array_column(array_filter($results, fn($r) => $r['status'] === 'scanned'), 'critical'));
+    $totalHigh = array_sum(array_column(array_filter($results, fn($r) => $r['status'] === 'scanned'), 'high'));
+
     // Bulk 스캔 감사 로그
     if (isset($_SESSION['user'])) {
-        $scannedCount = count(array_filter($results, fn($r) => $r['status'] === 'scanned'));
         logAudit($conn, $_SESSION['user']['id'], $_SESSION['user']['username'],
-                 'BULK_SCAN', 'scan', null, "scanned: {$scannedCount} images");
+                 'BULK_SCAN', 'scan', null, "scanned: {$scannedCount} images, critical: {$totalCritical}, high: {$totalHigh}");
+    }
+
+    // Slack Webhook 알림 (일괄 스캔 요약)
+    $webhookSent = false;
+    if (isWebhookConfigured() && ($totalCritical > 0 || $totalHigh > 0)) {
+        $webhookResult = sendBulkScanSummary($scannedCount, $totalCritical, $totalHigh, $failedCount);
+        $webhookSent = $webhookResult['success'] ?? false;
     }
 
     $conn->close();
-    echo json_encode(['success' => true, 'results' => $results]);
+    echo json_encode([
+        'success' => true,
+        'results' => $results,
+        'summary' => [
+            'scanned' => $scannedCount,
+            'failed' => $failedCount,
+            'total_critical' => $totalCritical,
+            'total_high' => $totalHigh
+        ],
+        'webhook_sent' => $webhookSent
+    ]);
     exit;
 }
 
@@ -206,6 +271,8 @@ echo json_encode([
     'status' => 'ok',
     'alert_email' => $ALERT_EMAIL ?: '(not configured)',
     'alert_on_critical' => $ALERT_ON_CRITICAL,
+    'alert_threshold' => $ALERT_THRESHOLD,
+    'webhook_configured' => isWebhookConfigured(),
     'endpoints' => [
         'scan_image' => '?action=scan_image&image=IMAGE_NAME',
         'scan_all' => '?action=scan_all&skip_recent=1'

@@ -87,8 +87,11 @@ function scanCompliance($target, $scanType = 'security-checks') {
 
     $data = json_decode($jsonOutput, true);
 
+    // 스캔 성공 여부 판단: Results가 있거나, Metadata가 있으면 성공
+    $success = $data !== null && (isset($data['Results']) || isset($data['Metadata']));
+
     return [
-        'success' => $data !== null,
+        'success' => $success,
         'data' => $data,
         'raw' => $jsonOutput,
         'target' => $target,
@@ -111,22 +114,26 @@ function convertComplianceToMarkdown($data, $target, $scanType) {
     $md .= "**스캔 시간**: " . date('Y-m-d H:i:s') . "\n\n";
     $md .= "---\n\n";
 
-    if (!$data || !isset($data['Results'])) {
-        // 대체 형식 체크
-        if (isset($data['Metadata'])) {
-            $md .= "## ✅ 컴플라이언스 요약\n\n";
-            if (isset($data['Metadata']['ReportTitle'])) {
-                $md .= "**리포트**: " . $data['Metadata']['ReportTitle'] . "\n\n";
-            }
-        }
+    // JSON 파싱 실패
+    if (!$data) {
+        $md .= "⚠️ 스캔 결과를 파싱할 수 없습니다.\n\n";
+        return $md;
+    }
 
-        if (isset($data['Results']) && is_array($data['Results'])) {
-            foreach ($data['Results'] as $result) {
-                $md .= processComplianceResult($result);
+    // Results가 없거나 비어있는 경우 = 이슈 없음
+    if (!isset($data['Results']) || empty($data['Results'])) {
+        $md .= "## ✅ 보안 검사 결과\n\n";
+        $md .= "🎉 **축하합니다!** 이 이미지에서 설정 오류나 시크릿이 발견되지 않았습니다.\n\n";
+
+        // 이미지 정보 표시
+        if (isset($data['Metadata'])) {
+            $md .= "### 📋 이미지 정보\n\n";
+            if (isset($data['Metadata']['OS']['Family'])) {
+                $md .= "- **OS**: " . $data['Metadata']['OS']['Family'] . " " . ($data['Metadata']['OS']['Name'] ?? '') . "\n";
             }
-        } else {
-            $md .= "⚠️ 컴플라이언스 데이터를 파싱할 수 없습니다.\n\n";
-            $md .= "```\n" . substr(json_encode($data, JSON_PRETTY_PRINT), 0, 2000) . "\n```\n";
+            if (isset($data['Metadata']['ImageID'])) {
+                $md .= "- **Image ID**: `" . substr($data['Metadata']['ImageID'], 7, 12) . "...`\n";
+            }
         }
         return $md;
     }

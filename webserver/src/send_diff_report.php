@@ -36,6 +36,7 @@ if ($isApiCall) {
 }
 
 require_once 'db_functions.php';
+require_once 'webhook.php';
 
 // 메일 설정
 $mailConfig = [
@@ -155,16 +156,33 @@ function sendDiffReport($scanId, $toEmail, $mailConfig) {
     
     // 제목 생성
     $subject = generateDiffSubject($diff, $newCounts, $imageName);
-    
+
     // HTML 생성
     $html = generateDiffHtml($currentScan, $diff, $newCounts);
-    
+
     // CSV 생성
     $csv = generateDiffCsv($currentScan, $diff);
-    
+
     // 이메일 발송
     include_once 'send_email.php';
-    return sendEmailLocal($toEmail, $subject, $html, $csv, $mailConfig);
+    $emailResult = sendEmailLocal($toEmail, $subject, $html, $csv, $mailConfig);
+
+    // Slack Webhook 알림 (Diff 리포트 발송)
+    if ($emailResult['success'] && isWebhookConfigured()) {
+        $newTotal = count($diff['new']);
+        $fixedTotal = count($diff['fixed']);
+
+        $diffText = "📦 *{$imageName}*\n";
+        $diffText .= "🆕 신규: {$newTotal}건 (Critical: {$newCounts['CRITICAL']}, High: {$newCounts['HIGH']})\n";
+        $diffText .= "✅ 조치: {$fixedTotal}건\n";
+        $diffText .= "📧 발송: `{$toEmail}`";
+
+        $severity = $newCounts['CRITICAL'] > 0 ? 'danger' : ($newCounts['HIGH'] > 0 ? 'warning' : 'good');
+        $webhookResult = sendCustomSlackMessage("📊 Diff 리포트 발송", $diffText, $severity);
+        $emailResult['webhook_sent'] = $webhookResult['success'] ?? false;
+    }
+
+    return $emailResult;
 }
 
 /**

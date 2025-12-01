@@ -31,7 +31,11 @@ services:
       - FROM_NAME=Trivy Scanner
       - ALERT_EMAIL=qorwlsdk1995@naver.com
       - ALERT_ON_CRITICAL=true
+      - ALERT_THRESHOLD=HIGH
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # Slack Webhook 설정
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-#security-alerts}
     depends_on:
       - mysql
     networks:

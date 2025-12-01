@@ -1,8 +1,10 @@
 <?php
 require_once 'auth.php';
+require_once 'webhook.php';
 $user = requireLogin();
 $conn = getDbConnection();
 initDatabase($conn);
+$webhookConfigured = isWebhookConfigured();
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -133,6 +135,20 @@ initDatabase($conn);
                 <a href="./users.php" class="btn" style="background: #ffc107; color: #333;">👥 사용자 관리</a>
                 <a href="./audit_logs.php" class="btn" style="background: #17a2b8; color: white; margin-left: 5px;">📜 감사 로그</a>
             </div>
+
+            <div class="card" style="background: linear-gradient(135deg, #4a154b 0%, #611f69 100%);">
+                <h2 style="color: white;">🔔 Slack Webhook</h2>
+                <p style="color: rgba(255,255,255,0.8);">취약점 발견 시 Slack 알림 설정</p>
+                <?php if ($webhookConfigured): ?>
+                <span style="color: #4ade80; font-weight: bold;">✅ 연결됨</span>
+                <button onclick="testWebhook()" class="btn" style="background: white; color: #4a154b; margin-left: 10px;">테스트 발송</button>
+                <?php else: ?>
+                <span style="color: #fbbf24;">⚠️ 미설정</span>
+                <p style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 10px;">
+                    .env 파일에 SLACK_WEBHOOK_URL 설정 필요
+                </p>
+                <?php endif; ?>
+            </div>
             <?php endif; ?>
         </div>
     </div>
@@ -149,7 +165,9 @@ initDatabase($conn);
                 const data = await res.json();
                 if (data.success) {
                     const cnt = data.results.filter(r => r.status === 'scanned').length;
-                    status.innerHTML = cnt + ' images scanned! <a href="./scan_monitor.php">View Diff</a>';
+                    let msg = cnt + ' images scanned!';
+                    if (data.webhook_sent) msg += ' 📢 Slack 알림 발송됨';
+                    status.innerHTML = msg + ' <a href="./scan_monitor.php">View Diff</a>';
                 } else {
                     status.textContent = 'Error: ' + data.message;
                 }
@@ -158,6 +176,16 @@ initDatabase($conn);
             }
             btn.disabled = false;
             btn.textContent = '모든 컨테이너 스캔';
+        }
+
+        async function testWebhook() {
+            try {
+                const res = await fetch('./webhook.php?action=test');
+                const data = await res.json();
+                alert(data.success ? '✅ 테스트 메시지가 Slack으로 발송되었습니다!' : '❌ 발송 실패: ' + data.error);
+            } catch (e) {
+                alert('❌ 오류: ' + e.message);
+            }
         }
     </script>
 </body>

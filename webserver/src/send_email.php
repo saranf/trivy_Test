@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 
 require_once 'auth.php';
 require_once 'db_functions.php';
+require_once 'webhook.php';
 
 // 메일 설정
 $mailConfig = [
@@ -103,6 +104,25 @@ $html = generateEmailHtml($scans);
 // 이메일 발송 (CSV 첨부) - 로컬 sendmail 사용
 $result = sendEmailLocal($toEmail, $subject, $html, $csv, $mailConfig);
 
+// Slack Webhook 알림 (이메일과 동시 발송)
+$webhookSent = false;
+if ($result['success'] && isWebhookConfigured()) {
+    $totalCritical = array_sum(array_column($scans, 'critical_count'));
+    $totalHigh = array_sum(array_column($scans, 'high_count'));
+    $imageList = implode(', ', array_unique(array_column($scans, 'image_name')));
+
+    if (strlen($imageList) > 100) {
+        $imageList = substr($imageList, 0, 97) . '...';
+    }
+
+    $slackText = "📧 스캔 리포트가 `{$toEmail}`로 발송되었습니다.\n대상: {$imageList}";
+    $severity = $totalCritical > 0 ? 'danger' : ($totalHigh > 0 ? 'warning' : 'good');
+
+    $webhookResult = sendCustomSlackMessage("📧 스캔 리포트 발송", $slackText, $severity);
+    $webhookSent = $webhookResult['success'] ?? false;
+}
+
+$result['webhook_sent'] = $webhookSent;
 echo json_encode($result);
 
 // CSV 생성 함수 (예외 처리 정보 포함)
