@@ -86,10 +86,10 @@ sudo ufw allow 8080/tcp   # cAdvisor
 
 | 서비스 | 포트 | URL | 계정 |
 |--------|------|-----|------|
-| **Trivy Web** | 6987 | http://서버IP:6987 | - |
-| **Grafana** | 3000 | http://서버IP:3000 | admin / admin123 |
-| **Prometheus** | 9090 | http://서버IP:9090 | - |
-| **cAdvisor** | 8080 | http://서버IP:8080 | - |
+| **Trivy Web** | 6987 | http://monitor.rmstudio.co.kr:6987 | - |
+| **Grafana** | 3000 | http://monitor.rmstudio.co.kr:3000 | admin / admin123 |
+| **Prometheus** | 9090 | http://monitor.rmstudio.co.kr:9090 | - |
+| **cAdvisor** | 8080 | http://monitor.rmstudio.co.kr:8080 | - |
 
 ---
 

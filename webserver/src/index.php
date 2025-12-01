@@ -56,8 +56,7 @@
             <div class="card" style="grid-column: span 2; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                 <h2 style="color: white;">📊 Grafana Dashboard</h2>
                 <p style="color: rgba(255,255,255,0.9);">전체 컨테이너 모니터링 및 취약점 현황 시각화</p>
-                <a href="/grafana/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" class="btn" style="background: white; color: #667eea;">전체 대시보드 열기</a>
-                <a href="http://localhost:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" class="btn" style="background: rgba(255,255,255,0.2); color: white; margin-left: 10px;">외부 접속 (포트 3000)</a>
+                <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" class="btn" style="background: white; color: #667eea;">전체 대시보드 열기</a>
             </div>
         </div>
     </div>

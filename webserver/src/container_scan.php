@@ -240,7 +240,7 @@ $containers = getRunningContainers();
             <h3 style="color:white; margin:0 0 10px 0;">📊 Grafana 모니터링</h3>
             <p style="color:rgba(255,255,255,0.9); margin:0 0 15px 0;">스캔한 컨테이너의 상세 메트릭을 확인하세요</p>
             <a id="grafanaContainerLink" href="#" target="_blank" style="display:inline-block; background:white; color:#667eea; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold; margin-right:10px;">🐳 이 컨테이너 보기</a>
-            <a href="http://localhost:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 전체 대시보드</a>
+            <a href="http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 전체 대시보드</a>
         </div>
     </div>
     <script>
@@ -282,7 +282,7 @@ $containers = getRunningContainers();
                     const grafanaArea = document.getElementById('grafanaArea');
                     const grafanaLink = document.getElementById('grafanaContainerLink');
                     const containerName = getContainerName(target);
-                    grafanaLink.href = `http://localhost:3000/d/trivy-security/trivy-security-scanner?orgId=1&var-container=${encodeURIComponent(containerName)}&var-image=${encodeURIComponent(target)}`;
+                    grafanaLink.href = `http://monitor.rmstudio.co.kr:3000/d/trivy-security/trivy-security-scanner?orgId=1&var-container=${encodeURIComponent(containerName)}&var-image=${encodeURIComponent(target)}`;
                     grafanaArea.style.display = 'block';
                 }
             } catch (e) {
