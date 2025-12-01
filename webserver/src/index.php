@@ -83,6 +83,16 @@ initDatabase($conn);
                 <?php endif; ?>
             </div>
 
+            <div class="card <?= isOperator() ? '' : 'disabled-card' ?>" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h2 style="color: white;">📧 Diff 리포트</h2>
+                <p style="color: rgba(255,255,255,0.9);">이전 스캔 대비 New/Fixed/Persistent 분석 및 이메일 발송</p>
+                <?php if (isOperator()): ?>
+                <a href="./send_diff_report.php" class="btn" style="background: white; color: #f5576c;">Diff 분석</a>
+                <?php else: ?>
+                <span class="btn gray" style="background: rgba(255,255,255,0.3); color: white;">Operator 권한 필요</span>
+                <?php endif; ?>
+            </div>
+
             <!-- Admin 전용 -->
             <?php if (isAdmin()): ?>
             <div class="card" style="background: #1a1a2e;">

@@ -6,9 +6,34 @@
  * - 요약 제목 자동 생성
  */
 
-error_reporting(0);
-ini_set('display_errors', 0);
-header('Content-Type: application/json');
+// API 호출인지 확인
+$isApiCall = $_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['action']);
+
+if ($isApiCall) {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    header('Content-Type: application/json');
+
+    session_start();
+    require_once 'db_functions.php';
+
+    // 로그인 확인
+    if (!isset($_SESSION['user'])) {
+        echo json_encode(['success' => false, 'message' => '로그인이 필요합니다.']);
+        exit;
+    }
+
+    // Operator 이상 권한
+    $userRole = $_SESSION['user']['role'] ?? '';
+    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    if (($levels[$userRole] ?? 0) < 2) {
+        echo json_encode(['success' => false, 'message' => 'Operator 이상 권한이 필요합니다.']);
+        exit;
+    }
+} else {
+    require_once 'auth.php';
+    $user = requireRole('operator');
+}
 
 require_once 'db_functions.php';
 
@@ -363,12 +388,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $result = sendDiffReport($scanId, $toEmail, $mailConfig);
+
+    // 감사 로그
+    logAudit($conn ?? getDbConnection(), $_SESSION['user']['id'] ?? null, $_SESSION['user']['username'] ?? 'unknown',
+             'SEND_DIFF_REPORT', 'scan', $scanId, "to: {$toEmail}");
+
     echo json_encode($result);
     exit;
 }
 
-echo json_encode([
-    'status' => 'ok',
-    'usage' => 'POST with {scan_id, email}'
-]);
+// UI 페이지
+$conn = getDbConnection();
+if ($conn) {
+    initDatabase($conn);
+}
+$scans = $conn ? getScanHistory($conn, '', '') : [];
+?>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Diff 리포트 발송</title>
+    <style>
+        <?= getAuthStyles() ?>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        button { padding: 12px 25px; background: #f5576c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #e4455b; }
+        button:disabled { background: #ccc; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; }
+        .result.success { background: #d4edda; color: #155724; display: block; }
+        .result.error { background: #f8d7da; color: #721c24; display: block; }
+        .info-box { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .info-box h2 { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <?= getNavMenu() ?>
+    <div class="container">
+        <div class="info-box">
+            <h2>📧 Diff 기반 지능형 리포트</h2>
+            <p>이전 스캔 대비 취약점 변화를 분석하여 New/Fixed/Persistent로 분류합니다.<br>
+            예외 처리된 취약점도 별도로 표시됩니다.</p>
+        </div>
 
+        <div class="card">
+            <h2>리포트 발송</h2>
+            <form id="diffForm">
+                <div class="form-group">
+                    <label for="scanId">스캔 선택</label>
+                    <select name="scan_id" id="scanId" required>
+                        <option value="">-- 스캔 기록 선택 --</option>
+                        <?php foreach ($scans as $s): ?>
+                        <option value="<?= $s['id'] ?>">[<?= $s['id'] ?>] <?= htmlspecialchars($s['image_name']) ?> (<?= $s['scan_date'] ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="email">수신 이메일</label>
+                    <input type="email" name="email" id="email" placeholder="report@example.com" required>
+                </div>
+                <button type="submit" id="sendBtn">📨 Diff 리포트 발송</button>
+            </form>
+            <div id="result" class="result"></div>
+        </div>
+
+        <div class="card">
+            <h3>📋 리포트 내용</h3>
+            <ul>
+                <li><strong>New (신규)</strong>: 이전 스캔에 없던 새로 발견된 취약점</li>
+                <li><strong>Fixed (조치)</strong>: 이전 스캔에 있었으나 사라진(패치된) 취약점</li>
+                <li><strong>Persistent (잔존)</strong>: 이전 스캔에도 있고 현재도 남아있는 취약점</li>
+                <li><strong>Excepted (예외)</strong>: 예외 처리로 등록된 취약점</li>
+            </ul>
+            <p>📎 첨부: 전체 내역 CSV 파일</p>
+        </div>
+    </div>
+
+    <script>
+    document.getElementById('diffForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('sendBtn');
+        const result = document.getElementById('result');
+
+        btn.disabled = true;
+        btn.textContent = '발송 중...';
+        result.className = 'result';
+
+        try {
+            const resp = await fetch('send_diff_report.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scan_id: document.getElementById('scanId').value,
+                    email: document.getElementById('email').value
+                })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                result.className = 'result success';
+                result.innerHTML = '✅ ' + data.message + (data.summary ? '<br>요약: ' + JSON.stringify(data.summary) : '');
+            } else {
+                result.className = 'result error';
+                result.textContent = '❌ ' + data.message;
+            }
+        } catch (err) {
+            result.className = 'result error';
+            result.textContent = '❌ 오류: ' + err.message;
+        }
+
+        btn.disabled = false;
+        btn.textContent = '📨 Diff 리포트 발송';
+    });
+    </script>
+</body>
+</html>

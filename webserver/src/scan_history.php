@@ -26,15 +26,30 @@ if ($action === 'csv' && isset($_GET['id'])) {
     $scanId = (int)$_GET['id'];
     $vulns = getScanVulnerabilities($conn, $scanId);
 
+    // 예외 처리 정보 가져오기
+    $activeExceptions = getActiveExceptions($conn);
+    $exceptedMap = [];
+    foreach ($activeExceptions as $ex) {
+        $exceptedMap[$ex['vulnerability_id']] = $ex;
+    }
+
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=scan_' . $scanId . '.csv');
 
     $output = fopen('php://output', 'w');
     // UTF-8 BOM for Excel compatibility
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title'], ',', '"', '\\');
+    fputcsv($output, ['Library', 'Vulnerability ID', 'Severity', 'Installed Version', 'Fixed Version', 'Title', 'Exception Status', 'Exception Reason', 'Exception Expires'], ',', '"', '\\');
     foreach ($vulns as $v) {
-        fputcsv($output, [$v['library'], $v['vulnerability'], $v['severity'], $v['installed_version'], $v['fixed_version'], $v['title']], ',', '"', '\\');
+        $exStatus = '';
+        $exReason = '';
+        $exExpires = '';
+        if (isset($exceptedMap[$v['vulnerability']])) {
+            $exStatus = 'EXCEPTED';
+            $exReason = $exceptedMap[$v['vulnerability']]['reason'];
+            $exExpires = $exceptedMap[$v['vulnerability']]['expires_at'];
+        }
+        fputcsv($output, [$v['library'], $v['vulnerability'], $v['severity'], $v['installed_version'], $v['fixed_version'], $v['title'], $exStatus, $exReason, $exExpires], ',', '"', '\\');
     }
     fclose($output);
     exit;
