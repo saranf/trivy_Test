@@ -78,6 +78,17 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
         .search-box select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
         .search-box button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .search-box a { padding: 10px 15px; background: #6c757d; color: white; border-radius: 4px; text-decoration: none; font-size: 14px; }
+        .action-bar { margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
+        .btn-email { background: #6f42c1; color: white; }
+        .checkbox-cell { width: 40px; text-align: center; }
+        input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .email-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .email-modal-content { background: white; margin: 100px auto; padding: 30px; border-radius: 8px; max-width: 500px; }
+        .email-modal input[type="email"], .email-modal input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .email-modal-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .email-modal-buttons button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-send { background: #6f42c1; color: white; }
+        .btn-cancel { background: #6c757d; color: white; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
         .modal-content { background: white; margin: 50px auto; padding: 20px; border-radius: 8px; max-width: 90%; max-height: 80%; overflow: auto; }
         .modal-close { float: right; font-size: 24px; cursor: pointer; }
@@ -106,9 +117,14 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
         <?php if (empty($history)): ?>
             <div class="no-data">저장된 스캔 기록이 없습니다.</div>
         <?php else: ?>
+            <div class="action-bar">
+                <button class="btn btn-email" onclick="showEmailModal()">📧 선택한 항목 이메일 발송</button>
+                <span id="selected-count" style="color:#666;"></span>
+            </div>
             <table>
                 <thead>
                     <tr>
+                        <th class="checkbox-cell"><input type="checkbox" id="selectAll" onclick="toggleAll()"></th>
                         <th>ID</th>
                         <th>소스</th>
                         <th>이미지</th>
@@ -128,6 +144,7 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
                         $tagClass = "tag-$source";
                     ?>
                     <tr>
+                        <td class="checkbox-cell"><input type="checkbox" class="scan-check" value="<?= $h['id'] ?>" onchange="updateCount()"></td>
                         <td><?= $h['id'] ?></td>
                         <td><span class="tag <?= $tagClass ?>"><?= $sourceLabel ?></span></td>
                         <td><?= htmlspecialchars($h['image_name']) ?></td>
@@ -157,7 +174,84 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
         </div>
     </div>
 
+    <!-- 이메일 발송 모달 -->
+    <div id="emailModal" class="email-modal">
+        <div class="email-modal-content">
+            <h2>📧 스캔 결과 이메일 발송</h2>
+            <p id="emailScanCount"></p>
+            <input type="email" id="emailTo" placeholder="받는 사람 이메일" required>
+            <input type="text" id="emailSubject" value="Trivy 스캔 결과 리포트" placeholder="제목">
+            <div class="email-modal-buttons">
+                <button class="btn-cancel" onclick="closeEmailModal()">취소</button>
+                <button class="btn-send" onclick="sendEmail()">발송</button>
+            </div>
+            <div id="emailStatus" style="margin-top:15px;"></div>
+        </div>
+    </div>
+
     <script>
+        function toggleAll() {
+            const checked = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.scan-check').forEach(cb => cb.checked = checked);
+            updateCount();
+        }
+
+        function updateCount() {
+            const count = document.querySelectorAll('.scan-check:checked').length;
+            document.getElementById('selected-count').textContent = count > 0 ? `${count}개 선택됨` : '';
+        }
+
+        function getSelectedIds() {
+            return Array.from(document.querySelectorAll('.scan-check:checked')).map(cb => parseInt(cb.value));
+        }
+
+        function showEmailModal() {
+            const ids = getSelectedIds();
+            if (ids.length === 0) {
+                alert('이메일로 발송할 스캔 기록을 선택하세요.');
+                return;
+            }
+            document.getElementById('emailScanCount').textContent = `선택된 스캔: ${ids.length}개`;
+            document.getElementById('emailStatus').textContent = '';
+            document.getElementById('emailModal').style.display = 'block';
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailModal').style.display = 'none';
+        }
+
+        async function sendEmail() {
+            const ids = getSelectedIds();
+            const email = document.getElementById('emailTo').value.trim();
+            const subject = document.getElementById('emailSubject').value.trim();
+            const status = document.getElementById('emailStatus');
+
+            if (!email) {
+                status.innerHTML = '<span style="color:red;">이메일 주소를 입력하세요.</span>';
+                return;
+            }
+
+            status.innerHTML = '<span style="color:#666;">발송 중...</span>';
+
+            try {
+                const res = await fetch('send_email.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scan_ids: ids, email: email, subject: subject })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    status.innerHTML = '<span style="color:green;">✅ ' + result.message + '</span>';
+                    setTimeout(closeEmailModal, 2000);
+                } else {
+                    status.innerHTML = '<span style="color:red;">❌ ' + result.message + '</span>';
+                }
+            } catch (e) {
+                status.innerHTML = '<span style="color:red;">❌ 오류: ' + e.message + '</span>';
+            }
+        }
+
         async function showDetail(scanId) {
             const res = await fetch('?action=detail&id=' + scanId);
             const data = await res.json();
@@ -179,6 +273,7 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
 
         window.onclick = function(e) {
             if (e.target == document.getElementById('modal')) closeModal();
+            if (e.target == document.getElementById('emailModal')) closeEmailModal();
         }
     </script>
 </body>
