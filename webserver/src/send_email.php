@@ -127,88 +127,29 @@ function generateEmailHtml($scans) {
 function sendEmailSmtp($to, $subject, $html, $config) {
     $host = $config['host'];
     $port = $config['port'];
-    $user = $config['user'];
-    $pass = $config['pass'];
-    $from = $config['from'] ?: $user;
+    $from = $config['from'];
     $fromName = $config['fromName'];
 
-    // SMTP 설정 확인
-    if (empty($user) || empty($pass)) {
-        return ['success' => false, 'message' => 'SMTP 설정이 필요합니다. docker-compose.yml에서 SMTP_USER, SMTP_PASS를 설정하세요.'];
-    }
-
     try {
-        // SSL/TLS 직접 연결 (포트 465) 또는 STARTTLS (포트 587)
-        if ($port == 465) {
-            $socket = @fsockopen("ssl://$host", $port, $errno, $errstr, 30);
-        } else {
-            $socket = @fsockopen($host, $port, $errno, $errstr, 30);
-        }
+        $socket = @fsockopen($host, $port, $errno, $errstr, 10);
 
         if (!$socket) {
             return ['success' => false, 'message' => "SMTP 연결 실패: $errstr ($errno)"];
         }
 
-        stream_set_timeout($socket, 30);
+        stream_set_timeout($socket, 10);
 
         // 서버 응답 읽기
         $response = fgets($socket, 515);
         if (substr($response, 0, 3) != '220') {
             fclose($socket);
-            return ['success' => false, 'message' => "SMTP 서버 응답 오류: $response"];
+            return ['success' => false, 'message' => "SMTP 서버 응답 오류"];
         }
 
         // EHLO
         fputs($socket, "EHLO localhost\r\n");
-        $ehloResponse = '';
         while ($line = fgets($socket, 515)) {
-            $ehloResponse .= $line;
             if (substr($line, 3, 1) == ' ') break;
-        }
-
-        // STARTTLS (포트 587인 경우)
-        if ($port == 587) {
-            fputs($socket, "STARTTLS\r\n");
-            $starttlsResponse = fgets($socket, 515);
-            if (substr($starttlsResponse, 0, 3) != '220') {
-                fclose($socket);
-                return ['success' => false, 'message' => "STARTTLS 실패: $starttlsResponse"];
-            }
-
-            // TLS 활성화
-            $crypto = stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT);
-            if (!$crypto) {
-                fclose($socket);
-                return ['success' => false, 'message' => 'TLS 암호화 활성화 실패'];
-            }
-
-            // TLS 후 다시 EHLO
-            fputs($socket, "EHLO localhost\r\n");
-            while ($line = fgets($socket, 515)) {
-                if (substr($line, 3, 1) == ' ') break;
-            }
-        }
-
-        // AUTH LOGIN
-        fputs($socket, "AUTH LOGIN\r\n");
-        $authResponse = fgets($socket, 515);
-        if (substr($authResponse, 0, 3) != '334') {
-            fclose($socket);
-            return ['success' => false, 'message' => "AUTH 시작 실패: $authResponse"];
-        }
-
-        fputs($socket, base64_encode($user) . "\r\n");
-        $userResponse = fgets($socket, 515);
-        if (substr($userResponse, 0, 3) != '334') {
-            fclose($socket);
-            return ['success' => false, 'message' => "사용자명 인증 실패: $userResponse"];
-        }
-
-        fputs($socket, base64_encode($pass) . "\r\n");
-        $passResponse = fgets($socket, 515);
-        if (substr($passResponse, 0, 3) != '235') {
-            fclose($socket);
-            return ['success' => false, 'message' => 'SMTP 인증 실패. 앱 비밀번호를 확인하세요.'];
         }
 
         // MAIL FROM
@@ -216,7 +157,7 @@ function sendEmailSmtp($to, $subject, $html, $config) {
         $mailFromResponse = fgets($socket, 515);
         if (substr($mailFromResponse, 0, 3) != '250') {
             fclose($socket);
-            return ['success' => false, 'message' => "MAIL FROM 실패: $mailFromResponse"];
+            return ['success' => false, 'message' => "MAIL FROM 실패"];
         }
 
         // RCPT TO
@@ -224,7 +165,7 @@ function sendEmailSmtp($to, $subject, $html, $config) {
         $rcptResponse = fgets($socket, 515);
         if (substr($rcptResponse, 0, 3) != '250') {
             fclose($socket);
-            return ['success' => false, 'message' => "RCPT TO 실패: $rcptResponse"];
+            return ['success' => false, 'message' => "RCPT TO 실패"];
         }
 
         // DATA
@@ -232,7 +173,7 @@ function sendEmailSmtp($to, $subject, $html, $config) {
         $dataStartResponse = fgets($socket, 515);
         if (substr($dataStartResponse, 0, 3) != '354') {
             fclose($socket);
-            return ['success' => false, 'message' => "DATA 시작 실패: $dataStartResponse"];
+            return ['success' => false, 'message' => "DATA 시작 실패"];
         }
 
         // 이메일 헤더 및 본문
@@ -253,9 +194,9 @@ function sendEmailSmtp($to, $subject, $html, $config) {
         fclose($socket);
 
         if (substr($dataResponse, 0, 3) == '250') {
-            return ['success' => true, 'message' => "이메일이 $to 로 발송되었습니다."];
+            return ['success' => true, 'message' => "이메일이 발송되었습니다. (MailHog에서 확인: http://localhost:8025)"];
         } else {
-            return ['success' => false, 'message' => "이메일 발송 실패: $dataResponse"];
+            return ['success' => false, 'message' => "이메일 발송 실패"];
         }
     } catch (Exception $e) {
         return ['success' => false, 'message' => '이메일 발송 중 오류: ' . $e->getMessage()];
