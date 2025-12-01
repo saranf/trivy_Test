@@ -170,16 +170,28 @@ $webhookCount = getWebhookCount();
             status.textContent = '';
             try {
                 const res = await fetch('./auto_scan.php?action=scan_all&skip_recent=0');
-                const data = await res.json();
+                const text = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    // JSON 파싱 실패 - 서버 에러 메시지일 수 있음
+                    console.error('Response:', text);
+                    status.innerHTML = '<span style="color:red;">❌ 서버 응답 오류 (콘솔 확인)</span>';
+                    btn.disabled = false;
+                    btn.textContent = '모든 컨테이너 스캔';
+                    return;
+                }
                 if (data.success) {
-                    const cnt = data.results.filter(r => r.status === 'scanned').length;
+                    const cnt = data.results ? data.results.filter(r => r.status === 'scanned').length : 0;
                     let msg = cnt + ' images scanned!';
                     if (data.webhook_sent) msg += ' 📢 Slack 알림 발송됨';
                     status.innerHTML = msg + ' <a href="./scan_monitor.php">View Diff</a>';
                 } else {
-                    status.textContent = 'Error: ' + data.message;
+                    status.textContent = 'Error: ' + (data.message || data.error || JSON.stringify(data));
                 }
             } catch (e) {
+                console.error('Scan error:', e);
                 status.textContent = 'Error: ' + e.message;
             }
             btn.disabled = false;

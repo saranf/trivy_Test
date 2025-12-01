@@ -8,9 +8,15 @@ if ($conn) {
     initDatabase($conn);
 }
 
-// KEV 데이터 로드 (전역)
-$kevData = getKevData();
-$kevMap = $kevData['vulnerabilities'] ?? [];
+// KEV 데이터 로드 (전역) - 에러 핸들링 추가
+$kevData = null;
+$kevMap = [];
+try {
+    $kevData = getKevData();
+    $kevMap = $kevData['vulnerabilities'] ?? [];
+} catch (Exception $e) {
+    error_log("KEV data load failed: " . $e->getMessage());
+}
 
 // API 처리
 $action = $_GET['action'] ?? '';
@@ -62,35 +68,48 @@ if ($action === 'csv' && isset($_GET['id'])) {
 
 if ($action === 'detail' && isset($_GET['id'])) {
     header('Content-Type: application/json');
-    $vulns = getScanVulnerabilities($conn, (int)$_GET['id']);
 
-    // 예외 처리 상태 추가
-    $activeExceptions = getActiveExceptions($conn);
-    $exceptedMap = [];
-    foreach ($activeExceptions as $ex) {
-        $exceptedMap[$ex['vulnerability_id']] = $ex;
-    }
+    try {
+        $vulns = getScanVulnerabilities($conn, (int)$_GET['id']);
 
-    foreach ($vulns as &$v) {
-        if (isset($exceptedMap[$v['vulnerability']])) {
-            $v['excepted'] = true;
-            $v['exception_reason'] = $exceptedMap[$v['vulnerability']]['reason'];
-            $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
-        } else {
-            $v['excepted'] = false;
+        // null 또는 배열이 아닌 경우 빈 배열 반환
+        if (!is_array($vulns)) {
+            echo json_encode([]);
+            exit;
         }
 
-        // KEV (Known Exploited Vulnerabilities) 매칭
-        $cveId = $v['vulnerability'] ?? '';
-        if (isset($kevMap[$cveId])) {
-            $v['isKev'] = true;
-            $v['kevInfo'] = $kevMap[$cveId];
-        } else {
-            $v['isKev'] = false;
+        // 예외 처리 상태 추가
+        $activeExceptions = getActiveExceptions($conn);
+        $exceptedMap = [];
+        if (is_array($activeExceptions)) {
+            foreach ($activeExceptions as $ex) {
+                $exceptedMap[$ex['vulnerability_id']] = $ex;
+            }
         }
-    }
 
-    echo json_encode($vulns);
+        foreach ($vulns as &$v) {
+            if (isset($exceptedMap[$v['vulnerability']])) {
+                $v['excepted'] = true;
+                $v['exception_reason'] = $exceptedMap[$v['vulnerability']]['reason'];
+                $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
+            } else {
+                $v['excepted'] = false;
+            }
+
+            // KEV (Known Exploited Vulnerabilities) 매칭
+            $cveId = $v['vulnerability'] ?? '';
+            if (isset($kevMap[$cveId])) {
+                $v['isKev'] = true;
+                $v['kevInfo'] = $kevMap[$cveId];
+            } else {
+                $v['isKev'] = false;
+            }
+        }
+
+        echo json_encode($vulns);
+    } catch (Exception $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+    }
     exit;
 }
 
@@ -344,11 +363,19 @@ if (isDemoMode()) {
 
         async function showDetail(scanId) {
             currentDetailScanId = scanId;
-            const res = await fetch('?action=detail&id=' + scanId);
-            const data = await res.json();
+            try {
+                const res = await fetch('?action=detail&id=' + scanId);
+                const data = await res.json();
 
-            // KEV 취약점 수 카운트
-            const kevCount = data.filter(v => v.isKev).length;
+                // 에러 응답 또는 배열이 아닌 경우 처리
+                if (!Array.isArray(data)) {
+                    document.getElementById('detail-content').innerHTML = '<p style="color:#dc3545;">❌ 데이터를 불러올 수 없습니다.</p>';
+                    document.getElementById('modal').style.display = 'block';
+                    return;
+                }
+
+                // KEV 취약점 수 카운트
+                const kevCount = data.filter(v => v.isKev).length;
             let kevHeader = '';
             if (kevCount > 0) {
                 kevHeader = `<div style="background:linear-gradient(135deg,#d32f2f,#ff5722);color:white;padding:12px 16px;border-radius:8px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
@@ -412,6 +439,10 @@ if (isDemoMode()) {
 
             document.getElementById('detail-content').innerHTML = html;
             document.getElementById('modal').style.display = 'block';
+            } catch (e) {
+                document.getElementById('detail-content').innerHTML = '<p style="color:#dc3545;">❌ 오류: ' + e.message + '</p>';
+                document.getElementById('modal').style.display = 'block';
+            }
         }
 
         // CVE별 AI 분석
