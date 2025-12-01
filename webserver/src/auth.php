@@ -90,6 +90,7 @@ function getNavMenu() {
     }
 
     if (isAdmin()) {
+        $menu .= '<a href="scheduled_scans.php">⏰ 주기적 스캔</a>';
         $menu .= '<a href="users.php">👥 사용자 관리</a>';
         $menu .= '<a href="audit_logs.php">📜 감사 로그</a>';
     }

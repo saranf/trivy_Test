@@ -42,30 +42,42 @@ function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL') {
     return convertToMarkdown($data, $imageOrId);
 }
 
-// JSON 결과를 Markdown으로 변환
+// JSON 결과를 Markdown으로 변환 (예외 처리 정보 포함)
 function convertToMarkdown($data, $target) {
+    // 예외 처리 정보 가져오기
+    $exceptedMap = [];
+    $conn = getDbConnection();
+    if ($conn) {
+        initDatabase($conn);
+        $activeExceptions = getActiveExceptions($conn);
+        foreach ($activeExceptions as $ex) {
+            $exceptedMap[$ex['vulnerability_id']] = $ex;
+        }
+    }
+
     $md = "# 🔍 Trivy 취약점 스캔 결과\n\n";
     $md .= "**스캔 대상**: `$target`\n\n";
     $md .= "**스캔 시간**: " . date('Y-m-d H:i:s') . "\n\n";
     $md .= "---\n\n";
-    
+
     $totalVulns = 0;
+    $exceptedCount = 0;
     $severityCounts = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0];
-    
+
     if (!isset($data['Results']) || empty($data['Results'])) {
         $md .= "## ✅ 취약점이 발견되지 않았습니다!\n";
         return $md;
     }
-    
+
     foreach ($data['Results'] as $result) {
         if (!isset($result['Vulnerabilities']) || empty($result['Vulnerabilities'])) {
             continue;
         }
-        
+
         $md .= "## 📦 " . ($result['Target'] ?? 'Unknown') . "\n\n";
-        $md .= "| 심각도 | CVE ID | 패키지 | 설치 버전 | 수정 버전 | 설명 |\n";
-        $md .= "|:------:|--------|--------|-----------|-----------|------|\n";
-        
+        $md .= "| 심각도 | CVE ID | 패키지 | 설치 버전 | 수정 버전 | 상태 | 설명 |\n";
+        $md .= "|:------:|--------|--------|-----------|-----------|------|------|\n";
+
         foreach ($result['Vulnerabilities'] as $vuln) {
             $severity = $vuln['Severity'] ?? 'UNKNOWN';
             $severityIcon = getSeverityIcon($severity);
@@ -73,10 +85,17 @@ function convertToMarkdown($data, $target) {
             $pkgName = $vuln['PkgName'] ?? 'N/A';
             $installed = $vuln['InstalledVersion'] ?? 'N/A';
             $fixed = $vuln['FixedVersion'] ?? '-';
-            $title = substr($vuln['Title'] ?? $vuln['Description'] ?? 'N/A', 0, 50);
-            
-            $md .= "| $severityIcon $severity | $vulnId | $pkgName | $installed | $fixed | $title |\n";
-            
+            $title = substr($vuln['Title'] ?? $vuln['Description'] ?? 'N/A', 0, 40);
+
+            // 예외 처리 상태 확인
+            $status = '';
+            if (isset($exceptedMap[$vulnId])) {
+                $status = '🛡️예외';
+                $exceptedCount++;
+            }
+
+            $md .= "| $severityIcon $severity | $vulnId | $pkgName | $installed | $fixed | $status | $title |\n";
+
             $totalVulns++;
             if (isset($severityCounts[$severity])) {
                 $severityCounts[$severity]++;
@@ -84,15 +103,19 @@ function convertToMarkdown($data, $target) {
         }
         $md .= "\n";
     }
-    
+
     // 요약 추가
     $summary = "## 📊 요약\n\n";
     $summary .= "- **총 취약점**: $totalVulns 개\n";
     $summary .= "- 🔴 CRITICAL: {$severityCounts['CRITICAL']} 개\n";
     $summary .= "- 🟠 HIGH: {$severityCounts['HIGH']} 개\n";
     $summary .= "- 🟡 MEDIUM: {$severityCounts['MEDIUM']} 개\n";
-    $summary .= "- 🟢 LOW: {$severityCounts['LOW']} 개\n\n";
-    
+    $summary .= "- 🟢 LOW: {$severityCounts['LOW']} 개\n";
+    if ($exceptedCount > 0) {
+        $summary .= "- 🛡️ **예외 처리**: {$exceptedCount} 개\n";
+    }
+    $summary .= "\n";
+
     return $summary . $md;
 }
 

@@ -36,6 +36,7 @@
 | 컨테이너 스캔 | `/container_scan.php` | Operator |
 | 예외 처리 관리 | `/exceptions.php` | Operator |
 | Diff 리포트 | `/send_diff_report.php` | Operator |
+| **주기적 스캔 설정** | `/scheduled_scans.php` | Admin |
 | 사용자 관리 | `/users.php` | Admin |
 | 감사 로그 | `/audit_logs.php` | Admin |
 | Grafana Dashboard | `:3000/d/trivy-security/` | - |
@@ -46,12 +47,14 @@
 ## ⚙️ 주요 기능
 
 ### 1. 지능형 리포팅 (Diff 기반)
+- **화면 미리보기**: 스캔 선택 시 Diff 결과를 화면에서 바로 확인
 - **이전 스캔 vs 현재 스캔** 자동 비교
 - **분류**:
   - `NEW`: 신규 발견 취약점 (가장 중요)
   - `FIXED`: 조치 완료 취약점
   - `PERSISTENT`: 잔존 취약점
   - `EXCEPTED`: 예외 처리된 취약점
+- **이메일 발송**: 화면에서 확인 후 선택적으로 이메일 발송 가능
 - **이메일 제목 예시**: `[보안알림] nginx - 신규 3건 (Critical 1건) / 조치 5건`
 - **첨부**: 전체 내역 CSV
 
@@ -59,14 +62,29 @@
 - 오탐/비즈니스 사유로 취약점 예외 처리
 - 만료일 필수 지정 (직접 선택)
 - 만료 후 자동 재표시
-- CSV, Diff 리포트, Grafana에 반영
+- **모든 곳에서 일관된 예외 처리 표시**:
+  - ✅ 스캔 상세 보기: 🛡️ 예외 뱃지 + 파란색 배경
+  - ✅ 실시간 스캔: 상태 컬럼에 🛡️예외 표시
+  - ✅ CSV 다운로드: Exception Status/Reason/Expires 컬럼
+  - ✅ Diff 리포트: EXCEPTED 분류 및 별도 테이블
+  - ✅ Grafana: 예외 수 카드 + 심각도별 파이차트
 
 ### 3. 이벤트 기반 자동화
 - Docker Socket 모니터링 (`/var/run/docker.sock`)
 - 컨테이너 Start/Restart 감지 → 자동 Trivy 스캔
 - Critical 발견 시 즉시 이메일 알림 (환경변수 설정)
 
-### 4. 계층형 Grafana 대시보드
+### 4. 주기적 스캔 설정 (Admin 전용)
+- 특정 이미지/컨테이너를 정해진 주기로 자동 스캔
+- **스케줄 타입**:
+  - `hourly`: 매시간 (분 지정)
+  - `daily`: 매일 (시간 지정)
+  - `weekly`: 매주 (요일 + 시간 지정)
+- 스캔 결과는 MySQL에 자동 저장 (`scan_source = 'scheduled'`)
+- 활성화/비활성화 토글 가능
+- 마지막 실행 시간 및 다음 실행 시간 표시
+
+### 5. 계층형 Grafana 대시보드
 - 전체 취약점 현황, 심각도별 분포
 - 예외 처리 통계 (Active/Expired)
 - 컨테이너별 상세 필터링
@@ -83,6 +101,11 @@
 | `LOGOUT` | 로그아웃 |
 | `MANUAL_SCAN` | 수동 스캔 |
 | `BULK_SCAN` | 일괄 스캔 |
+| `SCHEDULED_SCAN` | 주기적 스캔 실행 |
+| `ADD_SCHEDULED_SCAN` | 주기적 스캔 등록 |
+| `UPDATE_SCHEDULED_SCAN` | 주기적 스캔 수정 |
+| `DELETE_SCHEDULED_SCAN` | 주기적 스캔 삭제 |
+| `TOGGLE_SCHEDULED_SCAN` | 주기적 스캔 활성화/비활성화 |
 | `ADD_EXCEPTION` | 예외 처리 등록 |
 | `DELETE_EXCEPTION` | 예외 처리 삭제 |
 | `DELETE_SCAN` | 스캔 기록 삭제 |
@@ -111,6 +134,8 @@ trivy_Test/
 │       ├── exception_api.php     # 예외 API
 │       ├── send_diff_report.php  # Diff 리포트
 │       ├── auto_scan.php         # 자동 스캔 API
+│       ├── scheduled_scans.php   # 주기적 스캔 설정 (Admin)
+│       ├── run_scheduled_scans_api.php  # 주기적 스캔 실행 API
 │       ├── users.php             # 사용자 관리
 │       ├── audit_logs.php        # 감사 로그
 │       └── metrics.php           # Prometheus 메트릭

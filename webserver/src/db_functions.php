@@ -124,6 +124,30 @@ function initDatabase($conn) {
         $stmt->execute();
         $stmt->close();
     }
+
+    // 주기적 스캔 설정 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS scheduled_scans (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            image_name VARCHAR(255) NOT NULL,
+            schedule_type ENUM('hourly', 'daily', 'weekly') NOT NULL DEFAULT 'daily',
+            schedule_time TIME DEFAULT '02:00:00',
+            schedule_day TINYINT DEFAULT 0,
+            is_active TINYINT(1) DEFAULT 1,
+            last_run DATETIME,
+            next_run DATETIME,
+            created_by INT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_active (is_active),
+            INDEX idx_next_run (next_run)
+        )
+    ");
+
+    // deleted_at 컬럼 추가 (없는 경우)
+    if (!columnExists($conn, 'vulnerability_exceptions', 'deleted_at')) {
+        @$conn->query("ALTER TABLE vulnerability_exceptions ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+    }
 }
 
 // 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk')
@@ -614,5 +638,126 @@ function getAuditLogs($conn, $limit = 100, $filters = []) {
 function hasPermission($userRole, $requiredLevel) {
     $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
     return ($levels[$userRole] ?? 0) >= ($levels[$requiredLevel] ?? 99);
+}
+
+// ========================================
+// 주기적 스캔 설정 함수
+// ========================================
+
+// 주기적 스캔 추가
+function addScheduledScan($conn, $imageName, $scheduleType, $scheduleTime, $scheduleDay, $createdBy) {
+    $nextRun = calculateNextRun($scheduleType, $scheduleTime, $scheduleDay);
+    $stmt = $conn->prepare("INSERT INTO scheduled_scans (image_name, schedule_type, schedule_time, schedule_day, next_run, created_by) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssisi", $imageName, $scheduleType, $scheduleTime, $scheduleDay, $nextRun, $createdBy);
+    $stmt->execute();
+    $id = $conn->insert_id;
+    $stmt->close();
+    return $id;
+}
+
+// 다음 실행 시간 계산
+function calculateNextRun($scheduleType, $scheduleTime, $scheduleDay = 0) {
+    $now = new DateTime();
+    $time = explode(':', $scheduleTime);
+    $hour = (int)($time[0] ?? 2);
+    $minute = (int)($time[1] ?? 0);
+
+    switch ($scheduleType) {
+        case 'hourly':
+            $next = clone $now;
+            $next->setTime((int)$now->format('H'), $minute, 0);
+            if ($next <= $now) {
+                $next->modify('+1 hour');
+            }
+            break;
+        case 'daily':
+            $next = clone $now;
+            $next->setTime($hour, $minute, 0);
+            if ($next <= $now) {
+                $next->modify('+1 day');
+            }
+            break;
+        case 'weekly':
+            $next = clone $now;
+            $next->setTime($hour, $minute, 0);
+            $currentDay = (int)$now->format('w'); // 0=Sunday
+            $targetDay = $scheduleDay;
+            $daysToAdd = ($targetDay - $currentDay + 7) % 7;
+            if ($daysToAdd == 0 && $next <= $now) {
+                $daysToAdd = 7;
+            }
+            $next->modify("+{$daysToAdd} days");
+            break;
+        default:
+            $next = clone $now;
+            $next->modify('+1 day');
+    }
+    return $next->format('Y-m-d H:i:s');
+}
+
+// 주기적 스캔 목록
+function getScheduledScans($conn, $activeOnly = true) {
+    $sql = "SELECT s.*, u.username as created_by_name FROM scheduled_scans s LEFT JOIN users u ON s.created_by = u.id";
+    if ($activeOnly) {
+        $sql .= " WHERE s.is_active = 1";
+    }
+    $sql .= " ORDER BY s.created_at DESC";
+    $result = $conn->query($sql);
+    $scans = [];
+    while ($row = $result->fetch_assoc()) {
+        $scans[] = $row;
+    }
+    return $scans;
+}
+
+// 주기적 스캔 수정
+function updateScheduledScan($conn, $id, $imageName, $scheduleType, $scheduleTime, $scheduleDay, $isActive) {
+    $nextRun = calculateNextRun($scheduleType, $scheduleTime, $scheduleDay);
+    $stmt = $conn->prepare("UPDATE scheduled_scans SET image_name = ?, schedule_type = ?, schedule_time = ?, schedule_day = ?, is_active = ?, next_run = ? WHERE id = ?");
+    $stmt->bind_param("sssiisi", $imageName, $scheduleType, $scheduleTime, $scheduleDay, $isActive, $nextRun, $id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// 주기적 스캔 삭제
+function deleteScheduledScan($conn, $id) {
+    $stmt = $conn->prepare("DELETE FROM scheduled_scans WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// 실행 대상 스캔 가져오기
+function getDueScans($conn) {
+    $now = date('Y-m-d H:i:s');
+    $stmt = $conn->prepare("SELECT * FROM scheduled_scans WHERE is_active = 1 AND next_run <= ?");
+    $stmt->bind_param("s", $now);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $scans = [];
+    while ($row = $result->fetch_assoc()) {
+        $scans[] = $row;
+    }
+    $stmt->close();
+    return $scans;
+}
+
+// 스캔 완료 후 업데이트
+function markScanComplete($conn, $id) {
+    // 현재 설정 가져오기
+    $stmt = $conn->prepare("SELECT schedule_type, schedule_time, schedule_day FROM scheduled_scans WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($row) {
+        $nextRun = calculateNextRun($row['schedule_type'], $row['schedule_time'], $row['schedule_day']);
+        $now = date('Y-m-d H:i:s');
+        $stmt = $conn->prepare("UPDATE scheduled_scans SET last_run = ?, next_run = ? WHERE id = ?");
+        $stmt->bind_param("ssi", $now, $nextRun, $id);
+        $stmt->execute();
+        $stmt->close();
+    }
 }
 

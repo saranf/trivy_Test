@@ -85,7 +85,7 @@
         "title": "Total Scans",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
         "targets": [{"expr": "trivy_total_scans", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": null}]}}}
       },
@@ -94,30 +94,39 @@
         "title": "Scans (24h)",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
         "targets": [{"expr": "trivy_scans_24h", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}}
       },
       {
         "id": 3,
-        "title": "Total Vulnerabilities",
+        "title": "Total Vulns",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+        "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
         "targets": [{"expr": "trivy_vulnerabilities_total", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "yellow", "value": null}, {"color": "red", "value": 100}]}}}
       },
       {
         "id": 4,
-        "title": "Critical Vulnerabilities",
+        "title": "🔴 Critical",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 15, "y": 0, "w": 5, "h": 4},
+        "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
         "targets": [{"expr": "trivy_vulnerabilities_by_severity{severity=\"critical\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "red"}}}
       },
       {
         "id": 14,
+        "title": "🟠 High",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+        "targets": [{"expr": "trivy_vulnerabilities_by_severity{severity=\"high\"}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "orange"}}}
+      },
+      {
+        "id": 15,
         "title": "🛡️ Excepted",
         "type": "stat",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -144,23 +153,34 @@
         "options": {"legend": {"displayMode": "table", "placement": "right"}}
       },
       {
+        "id": 16,
+        "title": "🛡️ Excepted by Severity",
+        "type": "piechart",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 16, "y": 4, "w": 8, "h": 8},
+        "targets": [{"expr": "trivy_excepted_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "options": {"legend": {"displayMode": "table", "placement": "right"}, "pieType": "donut"},
+        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
+      },
+      {
         "id": 7,
         "title": "Vulnerabilities per Image",
         "type": "bargauge",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 16, "y": 4, "w": 8, "h": 8},
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 6},
         "targets": [{"expr": "trivy_image_vulnerabilities{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"orientation": "horizontal", "displayMode": "gradient"},
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
       },
       {
         "id": 8,
-        "title": "Critical Vulns per Image",
-        "type": "table",
+        "title": "Critical per Image",
+        "type": "bargauge",
         "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 12, "w": 24, "h": 6},
-        "targets": [{"expr": "trivy_image_critical{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "format": "table", "instant": true, "datasource": {"type": "prometheus", "uid": "prometheus"}}],
-        "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}}}]
+        "gridPos": {"x": 12, "y": 12, "w": 12, "h": 6},
+        "targets": [{"expr": "trivy_image_critical{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "options": {"orientation": "horizontal", "displayMode": "gradient"},
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 10}]}}}
       },
       {
         "id": 9,
@@ -197,26 +217,6 @@
         "gridPos": {"x": 12, "y": 26, "w": 12, "h": 8},
         "targets": [{"expr": "rate(container_network_transmit_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "fieldConfig": {"defaults": {"unit": "Bps"}}
-      },
-      {
-        "id": 13,
-        "title": "Image Vulnerabilities (Selected)",
-        "type": "bargauge",
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 0, "y": 34, "w": 24, "h": 6},
-        "targets": [{"expr": "trivy_image_vulnerabilities{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
-        "options": {"orientation": "horizontal", "displayMode": "gradient"},
-        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
-      },
-      {
-        "id": 15,
-        "title": "Excepted by Severity",
-        "type": "piechart",
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
-        "gridPos": {"x": 16, "y": 4, "w": 8, "h": 8},
-        "targets": [{"expr": "trivy_excepted_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
-        "options": {"legend": {"displayMode": "table", "placement": "right"}, "pieType": "donut"},
-        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
       }
     ]
 }

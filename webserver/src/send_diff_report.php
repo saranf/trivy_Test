@@ -371,7 +371,108 @@ function generateDiffCsv($scan, $diff) {
     return implode("\n", $lines);
 }
 
-// API 엔드포인트
+// Preview API (화면에 Diff 결과 표시)
+if (isset($_GET['action']) && $_GET['action'] === 'preview') {
+    $scanId = (int)($_GET['scan_id'] ?? 0);
+
+    if ($scanId <= 0) {
+        echo json_encode(['success' => false, 'message' => 'scan_id가 필요합니다.']);
+        exit;
+    }
+
+    $conn = getDbConnection();
+    if (!$conn) {
+        echo json_encode(['success' => false, 'message' => 'DB 연결 실패']);
+        exit;
+    }
+    initDatabase($conn);
+
+    // 현재 스캔 정보
+    $stmt = $conn->prepare("SELECT * FROM scan_history WHERE id = ?");
+    $stmt->bind_param("i", $scanId);
+    $stmt->execute();
+    $currentScan = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$currentScan) {
+        echo json_encode(['success' => false, 'message' => '스캔을 찾을 수 없습니다.']);
+        exit;
+    }
+
+    // 이전 스캔 찾기
+    $stmt = $conn->prepare("SELECT * FROM scan_history WHERE image_name = ? AND id < ? ORDER BY id DESC LIMIT 1");
+    $stmt->bind_param("si", $currentScan['image_name'], $scanId);
+    $stmt->execute();
+    $prevScan = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    // 현재 취약점
+    $currentVulns = getScanVulnerabilities($conn, $scanId);
+    $prevVulns = $prevScan ? getScanVulnerabilities($conn, $prevScan['id']) : [];
+
+    // 예외 처리 정보
+    $activeExceptions = getActiveExceptions($conn);
+    $exceptedMap = [];
+    foreach ($activeExceptions as $ex) {
+        $exceptedMap[$ex['vulnerability_id']] = $ex;
+    }
+
+    // Diff 계산
+    $currentKeys = [];
+    $prevKeys = [];
+
+    foreach ($currentVulns as $v) {
+        $key = $v['vulnerability'] . '|' . $v['library'];
+        $currentKeys[$key] = $v;
+    }
+    foreach ($prevVulns as $v) {
+        $key = $v['vulnerability'] . '|' . $v['library'];
+        $prevKeys[$key] = $v;
+    }
+
+    $diff = ['new' => [], 'fixed' => [], 'persistent' => [], 'excepted' => []];
+
+    // New & Persistent
+    foreach ($currentKeys as $key => $v) {
+        // 예외 처리 확인
+        if (isset($exceptedMap[$v['vulnerability']])) {
+            $v['excepted'] = true;
+            $v['exception_reason'] = $exceptedMap[$v['vulnerability']]['reason'];
+            $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
+            $diff['excepted'][] = $v;
+        } elseif (!isset($prevKeys[$key])) {
+            $diff['new'][] = $v;
+        } else {
+            $diff['persistent'][] = $v;
+        }
+    }
+
+    // Fixed
+    foreach ($prevKeys as $key => $v) {
+        if (!isset($currentKeys[$key])) {
+            $diff['fixed'][] = $v;
+        }
+    }
+
+    $summary = [
+        'new' => count($diff['new']),
+        'fixed' => count($diff['fixed']),
+        'persistent' => count($diff['persistent']),
+        'excepted' => count($diff['excepted']),
+        'total' => count($currentVulns)
+    ];
+
+    echo json_encode([
+        'success' => true,
+        'scan' => $currentScan,
+        'prev_scan' => $prevScan,
+        'diff' => $diff,
+        'summary' => $summary
+    ]);
+    exit;
+}
+
+// Send API (이메일 발송)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     $scanId = (int)($data['scan_id'] ?? 0);
@@ -390,8 +491,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = sendDiffReport($scanId, $toEmail, $mailConfig);
 
     // 감사 로그
-    logAudit($conn ?? getDbConnection(), $_SESSION['user']['id'] ?? null, $_SESSION['user']['username'] ?? 'unknown',
-             'SEND_DIFF_REPORT', 'scan', $scanId, "to: {$toEmail}");
+    $conn = getDbConnection();
+    if ($conn) {
+        logAudit($conn, $_SESSION['user']['id'] ?? null, $_SESSION['user']['username'] ?? 'unknown',
+                 'SEND_DIFF_REPORT', 'scan', $scanId, "to: {$toEmail}");
+    }
 
     echo json_encode($result);
     exit;
@@ -408,105 +512,219 @@ $scans = $conn ? getScanHistory($conn, '', '') : [];
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Diff 리포트 발송</title>
+    <title>Diff 리포트</title>
     <style>
         <?= getAuthStyles() ?>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
-        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
-        h1 { color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: 600; color: #333; }
         select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-        button { padding: 12px 25px; background: #f5576c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        button:hover { background: #e4455b; }
-        button:disabled { background: #ccc; }
-        .result { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; }
-        .result.success { background: #d4edda; color: #155724; display: block; }
-        .result.error { background: #f8d7da; color: #721c24; display: block; }
+        .btn { padding: 12px 25px; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-right: 10px; }
+        .btn-preview { background: #17a2b8; }
+        .btn-preview:hover { background: #138496; }
+        .btn-send { background: #f5576c; }
+        .btn-send:hover { background: #e4455b; }
+        .btn:disabled { background: #ccc; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+        .result.success { background: #d4edda; color: #155724; }
+        .result.error { background: #f8d7da; color: #721c24; }
         .info-box { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         .info-box h2 { margin-top: 0; }
+        .summary-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px; }
+        .summary-card { padding: 15px; border-radius: 8px; text-align: center; color: white; }
+        .summary-card h3 { margin: 0 0 5px 0; font-size: 28px; }
+        .summary-card p { margin: 0; font-size: 12px; }
+        .card-new { background: #dc3545; }
+        .card-fixed { background: #28a745; }
+        .card-persistent { background: #6c757d; }
+        .card-excepted { background: #1976d2; }
+        .card-total { background: #343a40; }
+        .diff-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .diff-table th, .diff-table td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 13px; }
+        .diff-table th { background: #f8f9fa; font-weight: 600; }
+        .status-new { background: #f8d7da; }
+        .status-fixed { background: #d4edda; }
+        .status-persistent { background: #fff3cd; }
+        .status-excepted { background: #cce5ff; }
+        .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: white; }
+        .badge.critical { background: #dc3545; }
+        .badge.high { background: #fd7e14; }
+        .badge.medium { background: #ffc107; color: #333; }
+        .badge.low { background: #28a745; }
+        .exception-badge { background: #1976d2; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px; }
+        #diffResult { display: none; }
+        .btn-group { display: flex; gap: 10px; align-items: center; }
     </style>
 </head>
 <body>
     <?= getNavMenu() ?>
     <div class="container">
         <div class="info-box">
-            <h2>📧 Diff 기반 지능형 리포트</h2>
-            <p>이전 스캔 대비 취약점 변화를 분석하여 New/Fixed/Persistent로 분류합니다.<br>
-            예외 처리된 취약점도 별도로 표시됩니다.</p>
+            <h2>📊 Diff 기반 지능형 리포트</h2>
+            <p>이전 스캔 대비 취약점 변화를 분석하여 New/Fixed/Persistent/Excepted로 분류합니다.</p>
         </div>
 
         <div class="card">
-            <h2>리포트 발송</h2>
-            <form id="diffForm">
-                <div class="form-group">
-                    <label for="scanId">스캔 선택</label>
-                    <select name="scan_id" id="scanId" required>
-                        <option value="">-- 스캔 기록 선택 --</option>
-                        <?php foreach ($scans as $s): ?>
-                        <option value="<?= $s['id'] ?>">[<?= $s['id'] ?>] <?= htmlspecialchars($s['image_name']) ?> (<?= $s['scan_date'] ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+            <h2>1️⃣ 스캔 선택 및 분석</h2>
+            <div class="form-group">
+                <label for="scanId">분석할 스캔 선택</label>
+                <select id="scanId" required>
+                    <option value="">-- 스캔 기록 선택 --</option>
+                    <?php foreach ($scans as $s): ?>
+                    <option value="<?= $s['id'] ?>">[<?= $s['id'] ?>] <?= htmlspecialchars($s['image_name']) ?> (<?= $s['scan_date'] ?>) - <?= $s['total_vulns'] ?>건</option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button class="btn btn-preview" id="previewBtn" onclick="previewDiff()">🔍 Diff 미리보기</button>
+        </div>
+
+        <div id="diffResult">
+            <div class="summary-cards" id="summaryCards"></div>
+
+            <div class="card">
+                <h2>📋 Diff 상세 결과</h2>
+                <div id="diffTables"></div>
+            </div>
+
+            <div class="card">
+                <h2>2️⃣ 이메일 발송 (선택)</h2>
                 <div class="form-group">
                     <label for="email">수신 이메일</label>
-                    <input type="email" name="email" id="email" placeholder="report@example.com" required>
+                    <input type="email" id="email" placeholder="report@example.com">
                 </div>
-                <button type="submit" id="sendBtn">📨 Diff 리포트 발송</button>
-            </form>
-            <div id="result" class="result"></div>
-        </div>
-
-        <div class="card">
-            <h3>📋 리포트 내용</h3>
-            <ul>
-                <li><strong>New (신규)</strong>: 이전 스캔에 없던 새로 발견된 취약점</li>
-                <li><strong>Fixed (조치)</strong>: 이전 스캔에 있었으나 사라진(패치된) 취약점</li>
-                <li><strong>Persistent (잔존)</strong>: 이전 스캔에도 있고 현재도 남아있는 취약점</li>
-                <li><strong>Excepted (예외)</strong>: 예외 처리로 등록된 취약점</li>
-            </ul>
-            <p>📎 첨부: 전체 내역 CSV 파일</p>
+                <div class="btn-group">
+                    <button class="btn btn-send" id="sendBtn" onclick="sendReport()">📨 이메일 발송</button>
+                    <span id="sendStatus"></span>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-    document.getElementById('diffForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const btn = document.getElementById('sendBtn');
-        const result = document.getElementById('result');
+    let currentDiffData = null;
 
+    async function previewDiff() {
+        const scanId = document.getElementById('scanId').value;
+        if (!scanId) { alert('스캔을 선택하세요.'); return; }
+
+        const btn = document.getElementById('previewBtn');
+        btn.disabled = true;
+        btn.textContent = '분석 중...';
+
+        try {
+            const resp = await fetch('send_diff_report.php?action=preview&scan_id=' + scanId);
+            const data = await resp.json();
+
+            if (data.success) {
+                currentDiffData = data;
+                renderDiffResult(data);
+                document.getElementById('diffResult').style.display = 'block';
+            } else {
+                alert('오류: ' + data.message);
+            }
+        } catch (err) {
+            alert('오류: ' + err.message);
+        }
+
+        btn.disabled = false;
+        btn.textContent = '🔍 Diff 미리보기';
+    }
+
+    function renderDiffResult(data) {
+        const diff = data.diff;
+        const summary = data.summary;
+
+        // Summary Cards
+        document.getElementById('summaryCards').innerHTML = `
+            <div class="summary-card card-new"><h3>${summary.new}</h3><p>🆕 신규</p></div>
+            <div class="summary-card card-fixed"><h3>${summary.fixed}</h3><p>✅ 조치 완료</p></div>
+            <div class="summary-card card-persistent"><h3>${summary.persistent}</h3><p>⚠️ 잔존</p></div>
+            <div class="summary-card card-excepted"><h3>${summary.excepted || 0}</h3><p>🛡️ 예외 처리</p></div>
+            <div class="summary-card card-total"><h3>${summary.total}</h3><p>📊 전체</p></div>
+        `;
+
+        // Tables
+        let html = '';
+
+        if (diff.new && diff.new.length > 0) {
+            html += renderTable('🆕 신규 취약점 (NEW)', diff.new, 'status-new');
+        }
+        if (diff.fixed && diff.fixed.length > 0) {
+            html += renderTable('✅ 조치 완료 (FIXED)', diff.fixed, 'status-fixed');
+        }
+        if (diff.excepted && diff.excepted.length > 0) {
+            html += renderTable('🛡️ 예외 처리 (EXCEPTED)', diff.excepted, 'status-excepted', true);
+        }
+        if (diff.persistent && diff.persistent.length > 0) {
+            html += renderTable('⚠️ 잔존 취약점 (PERSISTENT)', diff.persistent, 'status-persistent');
+        }
+
+        if (!html) {
+            html = '<p style="text-align:center;color:#666;">이전 스캔이 없거나 변동 사항이 없습니다.</p>';
+        }
+
+        document.getElementById('diffTables').innerHTML = html;
+    }
+
+    function renderTable(title, items, rowClass, showException = false) {
+        let html = `<h3>${title} (${items.length}건)</h3>`;
+        html += `<table class="diff-table"><thead><tr>
+            <th>Library</th><th>Vulnerability</th><th>Severity</th>
+            <th>Installed</th><th>Fixed</th>${showException ? '<th>예외 사유</th><th>만료일</th>' : ''}</tr></thead><tbody>`;
+
+        items.forEach(v => {
+            const sevClass = (v.severity || '').toLowerCase();
+            html += `<tr class="${rowClass}">
+                <td>${v.library || ''}</td>
+                <td>${v.vulnerability || ''}${v.excepted ? '<span class="exception-badge">🛡️예외</span>' : ''}</td>
+                <td><span class="badge ${sevClass}">${v.severity || ''}</span></td>
+                <td>${v.installed_version || ''}</td>
+                <td>${v.fixed_version || '-'}</td>`;
+            if (showException) {
+                html += `<td>${v.exception_reason || ''}</td><td>${v.exception_expires ? v.exception_expires.split(' ')[0] : ''}</td>`;
+            }
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+    }
+
+    async function sendReport() {
+        const scanId = document.getElementById('scanId').value;
+        const email = document.getElementById('email').value;
+
+        if (!email) { alert('이메일을 입력하세요.'); return; }
+        if (!scanId) { alert('스캔을 먼저 선택하세요.'); return; }
+
+        const btn = document.getElementById('sendBtn');
+        const status = document.getElementById('sendStatus');
         btn.disabled = true;
         btn.textContent = '발송 중...';
-        result.className = 'result';
 
         try {
             const resp = await fetch('send_diff_report.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scan_id: document.getElementById('scanId').value,
-                    email: document.getElementById('email').value
-                })
+                body: JSON.stringify({ scan_id: scanId, email: email })
             });
             const data = await resp.json();
 
             if (data.success) {
-                result.className = 'result success';
-                result.innerHTML = '✅ ' + data.message + (data.summary ? '<br>요약: ' + JSON.stringify(data.summary) : '');
+                status.innerHTML = '<span style="color:green;">✅ ' + data.message + '</span>';
             } else {
-                result.className = 'result error';
-                result.textContent = '❌ ' + data.message;
+                status.innerHTML = '<span style="color:red;">❌ ' + data.message + '</span>';
             }
         } catch (err) {
-            result.className = 'result error';
-            result.textContent = '❌ 오류: ' + err.message;
+            status.innerHTML = '<span style="color:red;">❌ 오류: ' + err.message + '</span>';
         }
 
         btn.disabled = false;
-        btn.textContent = '📨 Diff 리포트 발송';
-    });
+        btn.textContent = '📨 이메일 발송';
+    }
     </script>
 </body>
 </html>

@@ -95,6 +95,12 @@ initDatabase($conn);
 
             <!-- Admin 전용 -->
             <?php if (isAdmin()): ?>
+            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h2 style="color: white;">⏰ 주기적 스캔</h2>
+                <p style="color: rgba(255,255,255,0.9);">특정 이미지를 정해진 주기로 자동 스캔</p>
+                <a href="./scheduled_scans.php" class="btn" style="background: white; color: #667eea;">스케줄 설정</a>
+            </div>
+
             <div class="card" style="background: #1a1a2e;">
                 <h2 style="color: #ffc107;">⚙️ 관리자 메뉴</h2>
                 <p style="color: rgba(255,255,255,0.7);">사용자 관리 및 시스템 감사 로그</p>
