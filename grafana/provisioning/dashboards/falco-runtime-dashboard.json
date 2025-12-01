@@ -1,0 +1,154 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "title": "🚨 보안 로그",
+      "type": "link",
+      "url": "/d/security-logs/"
+    }
+  ],
+  "liveNow": true,
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["falco", "runtime", "security", "threats"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({job=\"falco\"}, priority)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Priority",
+        "multi": true,
+        "name": "priority",
+        "options": [],
+        "query": "label_values({job=\"falco\"}, priority)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "🦅 Falco Runtime Security",
+  "uid": "falco-runtime",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "⚠️ Falco 미설치 안내",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "## 🦅 Falco 런타임 보안 모니터링\n\n**현재 Falco가 설치되어 있지 않습니다.** Linux 서버에서 Falco를 활성화하면 이 대시보드에서 런타임 위협을 모니터링할 수 있습니다.\n\n### 활성화 방법\n1. `docker-compose.yml`에서 `falco` 및 `falco-sidekick` 서비스 주석 해제\n2. `docker-compose up -d falco falco-sidekick` 실행\n\n⚠️ **주의**: Falco는 Linux 커널 모듈이 필요합니다. Docker Desktop(Mac/Windows)에서는 동작하지 않습니다."
+      }
+    },
+    {
+      "id": 2,
+      "title": "🚨 런타임 위협 이벤트 추이",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({job=\"falco\"} |~ \"(?i)(critical|warning|error)\" [5m])) by (priority)",
+          "legendFormat": "{{priority}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 30, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "📊 위협 유형 분포",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({job=\"falco\"} |~ \"shell\" [$__range]))",
+          "legendFormat": "Shell Spawned",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({job=\"falco\"} |~ \"sensitive.*file\" [$__range]))",
+          "legendFormat": "Sensitive File Access",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(count_over_time({job=\"falco\"} |~ \"network|connection\" [$__range]))",
+          "legendFormat": "Network Activity",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(count_over_time({job=\"falco\"} |~ \"privilege|root\" [$__range]))",
+          "legendFormat": "Privilege Escalation",
+          "refId": "D"
+        }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "id": 4,
+      "title": "🔴 Critical/Warning 이벤트",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{job=\"falco\"} |~ \"(?i)(critical|warning)\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 5,
+      "title": "🐚 쉘 실행 감지",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{job=\"falco\"} |~ \"(?i)(shell|bash|sh|terminal)\"",
+          "refId": "A"
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 6,
+      "title": "📁 민감 파일 접근",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{job=\"falco\"} |~ \"(?i)(shadow|passwd|sensitive|secret|credential|key)\"",
+          "refId": "A"
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+    }
+  ]
+}
+

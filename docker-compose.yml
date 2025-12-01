@@ -171,6 +171,41 @@ services:
     networks:
       - app-network
 
+  # 🦅 Falco - 런타임 위협 탐지 (선택사항)
+  # ⚠️ 주의: Falco는 Linux 커널 모듈이 필요합니다.
+  # Docker Desktop(Mac/Windows)에서는 동작하지 않습니다.
+  # Linux 서버에서만 활성화하세요.
+  # falco:
+  #   image: falcosecurity/falco:latest
+  #   privileged: true
+  #   volumes:
+  #     - /var/run/docker.sock:/host/var/run/docker.sock:ro
+  #     - /dev:/host/dev:ro
+  #     - /proc:/host/proc:ro
+  #     - /boot:/host/boot:ro
+  #     - /lib/modules:/host/lib/modules:ro
+  #     - /usr:/host/usr:ro
+  #     - /etc:/host/etc:ro
+  #     - ./falco/falco.yaml:/etc/falco/falco.yaml
+  #   environment:
+  #     - TZ=Asia/Seoul
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+
+  # 🦅 Falco Sidekick - Falco 이벤트를 Loki로 전송
+  # falco-sidekick:
+  #   image: falcosecurity/falcosidekick:latest
+  #   environment:
+  #     - TZ=Asia/Seoul
+  #     - LOKI_HOSTPORT=http://loki:3100
+  #   depends_on:
+  #     - falco
+  #     - loki
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+
 networks:
   app-network:
     driver: bridge

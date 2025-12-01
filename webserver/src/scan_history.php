@@ -1,11 +1,16 @@
 <?php
 require_once 'auth.php';
+require_once 'cisa_kev.php';
 $currentUser = requireLogin();  // Viewer 이상 접근 가능
 
 $conn = getDbConnection();
 if ($conn) {
     initDatabase($conn);
 }
+
+// KEV 데이터 로드 (전역)
+$kevData = getKevData();
+$kevMap = $kevData['vulnerabilities'] ?? [];
 
 // API 처리
 $action = $_GET['action'] ?? '';
@@ -73,6 +78,15 @@ if ($action === 'detail' && isset($_GET['id'])) {
             $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
         } else {
             $v['excepted'] = false;
+        }
+
+        // KEV (Known Exploited Vulnerabilities) 매칭
+        $cveId = $v['vulnerability'] ?? '';
+        if (isset($kevMap[$cveId])) {
+            $v['isKev'] = true;
+            $v['kevInfo'] = $kevMap[$cveId];
+        } else {
+            $v['isKev'] = false;
         }
     }
 
@@ -333,11 +347,46 @@ if (isDemoMode()) {
             const res = await fetch('?action=detail&id=' + scanId);
             const data = await res.json();
 
-            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>상태/AI</th></tr></thead><tbody>';
+            // KEV 취약점 수 카운트
+            const kevCount = data.filter(v => v.isKev).length;
+            let kevHeader = '';
+            if (kevCount > 0) {
+                kevHeader = `<div style="background:linear-gradient(135deg,#d32f2f,#ff5722);color:white;padding:12px 16px;border-radius:8px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:24px;">🚨</span>
+                    <div><strong>실제 악용 중인 취약점 ${kevCount}개 발견!</strong><br>
+                    <small>CISA Known Exploited Vulnerabilities (KEV) 카탈로그에 등재된 취약점입니다. 즉시 조치가 필요합니다.</small></div>
+                </div>`;
+            }
+
+            let html = kevHeader + '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>상태/AI</th></tr></thead><tbody>';
+
+            // KEV 취약점을 먼저 정렬
+            data.sort((a, b) => {
+                if (a.isKev && !b.isKev) return -1;
+                if (!a.isKev && b.isKev) return 1;
+                const order = {CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, UNKNOWN: 4};
+                return (order[a.severity] ?? 5) - (order[b.severity] ?? 5);
+            });
+
             data.forEach(v => {
                 const badgeClass = v.severity.toLowerCase();
                 const isExcepted = v.excepted === true;
-                const rowStyle = isExcepted ? 'background: #e3f2fd;' : '';
+                const isKev = v.isKev === true;
+                let rowStyle = isExcepted ? 'background: #e3f2fd;' : '';
+                if (isKev && !isExcepted) {
+                    rowStyle = 'background: linear-gradient(90deg, #ffebee 0%, #fff 100%); border-left: 4px solid #d32f2f;';
+                }
+
+                // KEV 뱃지
+                let kevBadge = '';
+                if (isKev) {
+                    const ransomware = v.kevInfo?.knownRansomwareCampaignUse === 'Known' ? '🦠 랜섬웨어 연관' : '';
+                    kevBadge = `<span style="display:inline-block;background:linear-gradient(135deg,#d32f2f,#ff5722);color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:4px;cursor:pointer;"
+                        onclick="showKevDetails('${v.vulnerability}')" title="🚨 실제 공격 중! 클릭하여 상세 보기">🚨 KEV</span>`;
+                    if (ransomware) {
+                        kevBadge += `<span style="display:inline-block;background:#9c27b0;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:2px;">🦠</span>`;
+                    }
+                }
 
                 let statusCell = '';
                 if (isExcepted) {
@@ -352,7 +401,7 @@ if (isDemoMode()) {
 
                 html += `<tr style="${rowStyle}">
                     <td>${v.library}</td>
-                    <td><a href="https://nvd.nist.gov/vuln/detail/${v.vulnerability}" target="_blank" style="color:#007bff;">${v.vulnerability}</a></td>
+                    <td><a href="https://nvd.nist.gov/vuln/detail/${v.vulnerability}" target="_blank" style="color:#007bff;">${v.vulnerability}</a>${kevBadge}</td>
                     <td><span class="badge ${badgeClass}">${v.severity}</span></td>
                     <td>${v.installed_version}</td>
                     <td>${v.fixed_version || '-'}</td>
@@ -389,6 +438,50 @@ if (isDemoMode()) {
 
         function closeModal() {
             document.getElementById('modal').style.display = 'none';
+        }
+
+        // KEV 상세 정보 표시
+        async function showKevDetails(cveId) {
+            try {
+                const res = await fetch(`cisa_kev.php?action=check&cve=${encodeURIComponent(cveId)}`);
+                const data = await res.json();
+
+                if (data.isKev && data.details) {
+                    const d = data.details;
+                    const ransomwareBadge = d.knownRansomwareCampaignUse === 'Known'
+                        ? '<span style="background:#9c27b0;color:white;padding:4px 8px;border-radius:4px;">🦠 랜섬웨어 캠페인에서 사용됨</span>'
+                        : '';
+
+                    const html = `
+                        <div style="padding:20px;">
+                            <h3 style="color:#d32f2f;margin-top:0;">🚨 ${cveId} - 실제 악용 중!</h3>
+                            <div style="background:#ffebee;padding:16px;border-radius:8px;margin-bottom:16px;">
+                                <p style="margin:0;"><strong>⚠️ 이 취약점은 CISA(미국 사이버보안 및 인프라 보안국)에서 "실제 악용이 확인된 취약점"으로 지정했습니다.</strong></p>
+                            </div>
+                            ${ransomwareBadge ? `<p>${ransomwareBadge}</p>` : ''}
+                            <table style="width:100%;border-collapse:collapse;">
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;width:140px;"><strong>제품</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">${d.vendorProject} - ${d.product}</td></tr>
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>취약점 이름</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">${d.vulnerabilityName}</td></tr>
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>설명</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">${d.shortDescription}</td></tr>
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>카탈로그 등재일</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">${d.dateAdded}</td></tr>
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>조치 기한</strong></td><td style="padding:8px;border-bottom:1px solid #eee;color:#d32f2f;font-weight:bold;">${d.dueDate}</td></tr>
+                                <tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>필요 조치</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">${d.requiredAction}</td></tr>
+                            </table>
+                            <div style="margin-top:16px;padding:12px;background:#fff3e0;border-radius:4px;">
+                                <strong>🔗 참고 링크:</strong><br>
+                                <a href="https://nvd.nist.gov/vuln/detail/${cveId}" target="_blank">NVD</a> |
+                                <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV Catalog</a>
+                            </div>
+                        </div>
+                    `;
+
+                    document.getElementById('aiImageName').textContent = '🚨 KEV 취약점 상세';
+                    document.getElementById('aiContent').innerHTML = html;
+                    document.getElementById('aiModal').style.display = 'block';
+                }
+            } catch (e) {
+                alert('KEV 정보 조회 실패: ' + e.message);
+            }
         }
 
         window.onclick = function(e) {
