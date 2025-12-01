@@ -1,7 +1,8 @@
 <?php
 /**
- * 👮 컴플라이언스 스캔 (Misconfig Scanner)
- * Dockerfile, Kubernetes 매니페스트, Terraform 등 IaC 파일 스캔
+ * 👮 컴플라이언스 스캔 (Compliance & Misconfig Scanner)
+ * - 설정 오류(Misconfig) 스캔: Dockerfile, K8s, Terraform 등
+ * - 컴플라이언스 표준 체크: Docker CIS, K8s CIS, PCI-DSS 등
  */
 require_once 'auth.php';
 $user = requireRole('operator');
@@ -10,6 +11,12 @@ require_once 'db_functions.php';
 
 header('Content-Type: text/html; charset=utf-8');
 
+// 지원하는 컴플라이언스 표준
+$complianceStandards = [
+    'docker-cis-1.6' => ['name' => 'Docker CIS Benchmark 1.6', 'icon' => '🐳', 'type' => 'image'],
+    'docker-cis' => ['name' => 'Docker CIS Benchmark (Latest)', 'icon' => '🐳', 'type' => 'image'],
+];
+
 // 지원하는 샘플 Dockerfile/Config 목록 (컨테이너 내부 경로)
 $sampleConfigs = [
     '/var/www/html' => '📁 웹 애플리케이션 루트',
@@ -17,24 +24,131 @@ $sampleConfigs = [
     '/etc/php' => '🐘 PHP 설정',
 ];
 
-// Trivy Config 스캔 실행
+// Trivy Config 스캔 실행 (설정 오류)
 function scanConfig($path, $severity = 'HIGH,CRITICAL') {
     $safePath = escapeshellarg($path);
     $safeSeverity = escapeshellarg($severity);
-    
+
     // Trivy config 스캔 (misconfig만)
     $command = "trivy config --no-progress --severity $safeSeverity --format json $safePath 2>&1";
     exec($command, $output, $resultCode);
-    
+
     $jsonOutput = implode("\n", $output);
     $data = json_decode($jsonOutput, true);
-    
+
     return [
         'success' => $data !== null && isset($data['Results']),
         'data' => $data,
         'raw' => $jsonOutput,
         'path' => $path
     ];
+}
+
+// Trivy 컴플라이언스 표준 체크 (Docker CIS 등)
+function scanCompliance($target, $standard = 'docker-cis-1.6') {
+    $safeTarget = escapeshellarg($target);
+    $safeStandard = escapeshellarg($standard);
+
+    // Trivy compliance 스캔
+    $command = "trivy image --compliance $safeStandard --format json $safeTarget 2>&1";
+    exec($command, $output, $resultCode);
+
+    $jsonOutput = implode("\n", $output);
+    $data = json_decode($jsonOutput, true);
+
+    return [
+        'success' => $data !== null,
+        'data' => $data,
+        'raw' => $jsonOutput,
+        'target' => $target,
+        'standard' => $standard
+    ];
+}
+
+// 컴플라이언스 결과를 Markdown으로 변환
+function convertComplianceToMarkdown($data, $target, $standard) {
+    $md = "# 📋 컴플라이언스 체크 결과\n\n";
+    $md .= "**대상 이미지**: `$target`\n\n";
+    $md .= "**컴플라이언스 표준**: `$standard`\n\n";
+    $md .= "**스캔 시간**: " . date('Y-m-d H:i:s') . "\n\n";
+    $md .= "---\n\n";
+
+    if (!$data || !isset($data['Results'])) {
+        // 대체 형식 체크
+        if (isset($data['Metadata'])) {
+            $md .= "## ✅ 컴플라이언스 요약\n\n";
+            if (isset($data['Metadata']['ReportTitle'])) {
+                $md .= "**리포트**: " . $data['Metadata']['ReportTitle'] . "\n\n";
+            }
+        }
+
+        if (isset($data['Results']) && is_array($data['Results'])) {
+            foreach ($data['Results'] as $result) {
+                $md .= processComplianceResult($result);
+            }
+        } else {
+            $md .= "⚠️ 컴플라이언스 데이터를 파싱할 수 없습니다.\n\n";
+            $md .= "```\n" . substr(json_encode($data, JSON_PRETTY_PRINT), 0, 2000) . "\n```\n";
+        }
+        return $md;
+    }
+
+    $passCount = 0;
+    $failCount = 0;
+    $details = "";
+
+    foreach ($data['Results'] as $result) {
+        $class = $result['Class'] ?? 'unknown';
+        $type = $result['Type'] ?? 'unknown';
+
+        if (isset($result['Misconfigurations'])) {
+            foreach ($result['Misconfigurations'] as $m) {
+                $status = $m['Status'] ?? 'FAIL';
+                $severity = $m['Severity'] ?? 'UNKNOWN';
+                $id = $m['ID'] ?? $m['AVDID'] ?? 'N/A';
+                $title = $m['Title'] ?? 'No Title';
+                $desc = $m['Description'] ?? '';
+                $resolution = $m['Resolution'] ?? '';
+
+                if ($status === 'PASS') {
+                    $passCount++;
+                } else {
+                    $failCount++;
+                    $icon = getSeverityIcon($severity);
+                    $details .= "| $icon $severity | `$id` | $title |\n";
+                }
+            }
+        }
+    }
+
+    $total = $passCount + $failCount;
+    $passRate = $total > 0 ? round(($passCount / $total) * 100, 1) : 0;
+
+    $md .= "## 📊 컴플라이언스 현황\n\n";
+    $md .= "| 항목 | 수치 |\n|------|------|\n";
+    $md .= "| ✅ 준수 (PASS) | $passCount |\n";
+    $md .= "| ❌ 미준수 (FAIL) | $failCount |\n";
+    $md .= "| 📈 준수율 | **{$passRate}%** |\n\n";
+
+    if ($failCount > 0) {
+        $md .= "## ❌ 미준수 항목\n\n";
+        $md .= "| 심각도 | ID | 설명 |\n|--------|-----|------|\n";
+        $md .= $details;
+    } else {
+        $md .= "## ✅ 모든 항목 준수!\n\n";
+    }
+
+    return $md;
+}
+
+function getSeverityIcon($severity) {
+    switch ($severity) {
+        case 'CRITICAL': return '🔴';
+        case 'HIGH': return '🟠';
+        case 'MEDIUM': return '🟡';
+        case 'LOW': return '🟢';
+        default: return '⚪';
+    }
 }
 
 // 결과를 Markdown으로 변환
@@ -95,37 +209,28 @@ function convertConfigToMarkdown($data, $path) {
     return $md;
 }
 
-function getSeverityIcon($severity) {
-    switch ($severity) {
-        case 'CRITICAL': return '🔴';
-        case 'HIGH': return '🟠';
-        case 'MEDIUM': return '🟡';
-        case 'LOW': return '🟢';
-        default: return '⚪';
-    }
-}
-
 // API 요청 처리
 $action = $_GET['action'] ?? '';
 
+// 설정 오류 스캔 API
 if ($action === 'scan') {
     header('Content-Type: application/json');
     $path = $_GET['path'] ?? '';
     $severity = $_GET['severity'] ?? 'HIGH,CRITICAL';
-    
+
     if (empty($path)) {
         echo json_encode(['success' => false, 'markdown' => "# ❌ 오류\n\n스캔 경로를 지정해주세요."]);
         exit;
     }
-    
+
     // 보안: 경로 검증 (상위 디렉토리 이동 차단)
     if (strpos($path, '..') !== false) {
         echo json_encode(['success' => false, 'markdown' => "# ❌ 오류\n\n잘못된 경로입니다."]);
         exit;
     }
-    
+
     $result = scanConfig($path, $severity);
-    
+
     if ($result['success']) {
         $markdown = convertConfigToMarkdown($result['data'], $path);
     } else {
@@ -134,12 +239,44 @@ if ($action === 'scan') {
         $markdown .= "- 경로가 존재하지 않음\n";
         $markdown .= "- 스캔 가능한 설정 파일이 없음 (Dockerfile, *.yaml, *.tf 등)\n";
     }
-    
+
     echo json_encode([
         'success' => $result['success'],
         'markdown' => $markdown,
         'data' => $result['data'],
         'path' => $path
+    ]);
+    exit;
+}
+
+// 컴플라이언스 표준 체크 API
+if ($action === 'compliance') {
+    header('Content-Type: application/json');
+    $target = $_GET['target'] ?? '';
+    $standard = $_GET['standard'] ?? 'docker-cis-1.6';
+
+    if (empty($target)) {
+        echo json_encode(['success' => false, 'markdown' => "# ❌ 오류\n\n대상 이미지를 지정해주세요."]);
+        exit;
+    }
+
+    $result = scanCompliance($target, $standard);
+
+    if ($result['success']) {
+        $markdown = convertComplianceToMarkdown($result['data'], $target, $standard);
+    } else {
+        $markdown = "## ❌ 컴플라이언스 체크 실패\n\n```\n{$result['raw']}\n```\n\n";
+        $markdown .= "**가능한 원인**:\n";
+        $markdown .= "- 이미지를 찾을 수 없음\n";
+        $markdown .= "- 해당 컴플라이언스 표준이 지원되지 않음\n";
+    }
+
+    echo json_encode([
+        'success' => $result['success'],
+        'markdown' => $markdown,
+        'data' => $result['data'],
+        'target' => $target,
+        'standard' => $standard
     ]);
     exit;
 }
@@ -275,6 +412,21 @@ function saveConfigScanResult($conn, $path, $data) {
         .sample-list { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
         .sample-btn { padding: 8px 15px; background: #e9ecef; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
         .sample-btn:hover { background: #dee2e6; }
+        .scan-tabs { display: flex; gap: 0; margin-bottom: 20px; }
+        .scan-tab { padding: 15px 25px; background: #e9ecef; border: none; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .scan-tab:first-child { border-radius: 8px 0 0 8px; }
+        .scan-tab:last-child { border-radius: 0 8px 8px 0; }
+        .scan-tab.active { background: #764ba2; color: white; }
+        .scan-tab:hover:not(.active) { background: #dee2e6; }
+        .scan-panel { display: none; }
+        .scan-panel.active { display: block; }
+        .compliance-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .compliance-card { background: white; border: 2px solid #e9ecef; border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.2s; }
+        .compliance-card:hover { border-color: #764ba2; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .compliance-card.selected { border-color: #764ba2; background: #f3e5f5; }
+        .compliance-card h3 { margin: 0 0 8px; font-size: 16px; }
+        .compliance-card p { margin: 0; color: #666; font-size: 13px; }
+        .compliance-card .icon { font-size: 24px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -286,45 +438,97 @@ function saveConfigScanResult($conn, $path, $data) {
             <a href="config_scan.php" class="tab active">👮 컴플라이언스 스캔</a>
         </div>
 
-        <h1>👮 컴플라이언스 스캔 (Misconfig Scanner)</h1>
+        <h1>👮 컴플라이언스 & 설정 오류 스캔</h1>
 
-        <div class="info-box">
-            <h2>🔍 설정 오류 스캔이란?</h2>
-            <p>Dockerfile, Kubernetes 매니페스트, Terraform 등 IaC(Infrastructure as Code) 파일의 <strong>보안 설정 오류</strong>를 탐지합니다.</p>
-            <ul>
-                <li>📋 <strong>Dockerfile</strong>: USER 미지정, 불필요한 권한, 보안 모범 사례 위반</li>
-                <li>☸️ <strong>Kubernetes</strong>: privileged 모드, hostPath 마운트, securityContext 설정</li>
-                <li>🏗️ <strong>Terraform/CloudFormation</strong>: 퍼블릭 버킷, 암호화 미설정, 보안 그룹 규칙</li>
-            </ul>
+        <!-- 스캔 타입 선택 탭 -->
+        <div class="scan-tabs">
+            <button class="scan-tab active" onclick="switchTab('compliance')">📋 컴플라이언스 표준</button>
+            <button class="scan-tab" onclick="switchTab('misconfig')">⚙️ 설정 오류 스캔</button>
         </div>
 
-        <div class="controls">
-            <div class="form-row">
-                <label><strong>스캔 경로:</strong></label>
-                <input type="text" id="scanPath" placeholder="스캔할 경로 입력 (예: /var/www/html, /app)" value="/var/www/html">
-                <select id="severitySelect">
-                    <option value="CRITICAL">CRITICAL만</option>
-                    <option value="HIGH,CRITICAL" selected>HIGH 이상</option>
-                    <option value="MEDIUM,HIGH,CRITICAL">MEDIUM 이상</option>
-                    <option value="LOW,MEDIUM,HIGH,CRITICAL">전체</option>
-                </select>
-                <button onclick="scanConfig()" id="scanBtn">🔍 스캔 시작</button>
+        <!-- 컴플라이언스 표준 체크 패널 -->
+        <div id="compliancePanel" class="scan-panel active">
+            <div class="info-box" style="background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);">
+                <h2>📋 컴플라이언스 표준 체크</h2>
+                <p>Docker 이미지가 보안 표준(CIS Benchmark, PCI-DSS 등)을 준수하는지 검사합니다.</p>
+                <ul>
+                    <li>🐳 <strong>Docker CIS</strong>: Docker 컨테이너 보안 벤치마크</li>
+                    <li>🔒 <strong>보안 모범사례</strong>: 권한, 네트워크, 파일시스템 설정 검증</li>
+                </ul>
             </div>
-            <div>
-                <strong>빠른 선택:</strong>
-                <div class="sample-list">
-                    <button class="sample-btn" onclick="setPath('/var/www/html')">📁 웹 루트</button>
-                    <button class="sample-btn" onclick="setPath('/etc/nginx')">🌐 Nginx</button>
-                    <button class="sample-btn" onclick="setPath('/etc')">⚙️ /etc 전체</button>
-                    <button class="sample-btn" onclick="setPath('/app')">📦 /app</button>
-                    <button class="sample-btn" onclick="setPath('/home')">🏠 /home</button>
+
+            <div class="controls">
+                <h3 style="margin-top:0;">1️⃣ 컴플라이언스 표준 선택</h3>
+                <div class="compliance-cards">
+                    <div class="compliance-card selected" onclick="selectStandard(this, 'docker-cis-1.6')">
+                        <div class="icon">🐳</div>
+                        <h3>Docker CIS Benchmark 1.6</h3>
+                        <p>CIS Docker Benchmark v1.6.0 기반 컨테이너 보안 검사</p>
+                    </div>
+                    <div class="compliance-card" onclick="selectStandard(this, 'docker-cis')">
+                        <div class="icon">🐳</div>
+                        <h3>Docker CIS (Latest)</h3>
+                        <p>최신 Docker CIS Benchmark 적용</p>
+                    </div>
+                </div>
+
+                <h3>2️⃣ 대상 이미지 선택</h3>
+                <div class="form-row">
+                    <select id="complianceTarget" style="flex:1;">
+                        <option value="">-- 이미지 선택 --</option>
+                        <?php
+                        exec('docker images --format "{{.Repository}}:{{.Tag}}"', $images);
+                        foreach ($images as $img) {
+                            if ($img !== '<none>:<none>') {
+                                echo "<option value=\"" . htmlspecialchars($img) . "\">" . htmlspecialchars($img) . "</option>";
+                            }
+                        }
+                        ?>
+                    </select>
+                    <button onclick="runComplianceCheck()" id="complianceBtn">📋 컴플라이언스 체크</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 설정 오류 스캔 패널 -->
+        <div id="misconfigPanel" class="scan-panel">
+            <div class="info-box">
+                <h2>⚙️ 설정 오류 스캔 (Misconfig)</h2>
+                <p>Dockerfile, Kubernetes 매니페스트, Terraform 등 IaC 파일의 보안 설정 오류를 탐지합니다.</p>
+                <ul>
+                    <li>📋 <strong>Dockerfile</strong>: USER 미지정, 불필요한 권한</li>
+                    <li>☸️ <strong>Kubernetes</strong>: privileged 모드, securityContext</li>
+                    <li>🏗️ <strong>Terraform</strong>: 퍼블릭 버킷, 암호화 미설정</li>
+                </ul>
+            </div>
+
+            <div class="controls">
+                <div class="form-row">
+                    <label><strong>스캔 경로:</strong></label>
+                    <input type="text" id="scanPath" placeholder="스캔할 경로 입력" value="/var/www/html">
+                    <select id="severitySelect">
+                        <option value="CRITICAL">CRITICAL만</option>
+                        <option value="HIGH,CRITICAL" selected>HIGH 이상</option>
+                        <option value="MEDIUM,HIGH,CRITICAL">MEDIUM 이상</option>
+                        <option value="LOW,MEDIUM,HIGH,CRITICAL">전체</option>
+                    </select>
+                    <button onclick="scanConfig()" id="scanBtn">🔍 스캔 시작</button>
+                </div>
+                <div>
+                    <strong>빠른 선택:</strong>
+                    <div class="sample-list">
+                        <button class="sample-btn" onclick="setPath('/var/www/html')">📁 웹 루트</button>
+                        <button class="sample-btn" onclick="setPath('/etc/nginx')">🌐 Nginx</button>
+                        <button class="sample-btn" onclick="setPath('/etc')">⚙️ /etc</button>
+                        <button class="sample-btn" onclick="setPath('/app')">📦 /app</button>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="result" id="result">
-            <p>스캔할 경로를 입력하고 스캔을 시작하세요.</p>
-            <p style="color:#666;font-size:13px;">💡 Dockerfile, *.yaml, *.yml, *.tf, *.json 등의 설정 파일이 있는 디렉토리를 스캔합니다.</p>
+            <p>📋 컴플라이언스 표준을 선택하고 이미지를 선택한 후 체크를 시작하세요.</p>
+            <p style="color:#666;font-size:13px;">💡 또는 "설정 오류 스캔" 탭에서 IaC 파일을 직접 스캔할 수 있습니다.</p>
         </div>
 
         <div id="saveArea" style="display:none; margin-top:20px; padding:15px; background:#e8f4f8; border-radius:8px; text-align:center;">
@@ -338,6 +542,57 @@ function saveConfigScanResult($conn, $path, $data) {
     <script>
         let lastScanData = null;
         let lastScanPath = null;
+        let selectedStandard = 'docker-cis-1.6';
+
+        // 탭 전환
+        function switchTab(tab) {
+            document.querySelectorAll('.scan-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.scan-panel').forEach(p => p.classList.remove('active'));
+
+            if (tab === 'compliance') {
+                document.querySelector('.scan-tab:first-child').classList.add('active');
+                document.getElementById('compliancePanel').classList.add('active');
+            } else {
+                document.querySelector('.scan-tab:last-child').classList.add('active');
+                document.getElementById('misconfigPanel').classList.add('active');
+            }
+        }
+
+        // 컴플라이언스 표준 선택
+        function selectStandard(el, standard) {
+            document.querySelectorAll('.compliance-card').forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedStandard = standard;
+        }
+
+        // 컴플라이언스 체크 실행
+        async function runComplianceCheck() {
+            const target = document.getElementById('complianceTarget').value;
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('complianceBtn');
+
+            if (!target) { alert('대상 이미지를 선택하세요.'); return; }
+
+            lastScanData = null;
+            lastScanPath = null;
+            document.getElementById('saveArea').style.display = 'none';
+            document.getElementById('saveMessage').style.display = 'none';
+
+            btn.disabled = true;
+            btn.textContent = '⏳ 체크 중...';
+            resultDiv.innerHTML = '<div class="loading">📋 컴플라이언스 표준 검사 중...<br><small>(' + selectedStandard + ')</small></div>';
+
+            try {
+                const response = await fetch(`config_scan.php?action=compliance&target=${encodeURIComponent(target)}&standard=${encodeURIComponent(selectedStandard)}`);
+                const result = await response.json();
+                resultDiv.innerHTML = marked.parse(result.markdown);
+            } catch (e) {
+                resultDiv.innerHTML = '<p style="color:red;">오류가 발생했습니다: ' + e.message + '</p>';
+            }
+
+            btn.disabled = false;
+            btn.textContent = '📋 컴플라이언스 체크';
+        }
 
         function setPath(path) {
             document.getElementById('scanPath').value = path;

@@ -95,17 +95,25 @@
 
 ### 5. 👮 컴플라이언스 진단 (Compliance Check)
 - **전용 컴플라이언스 스캔 페이지** (`config_scan.php`)
-- **이미지 스캔**: Docker 이미지 내 소프트웨어 취약점(CVE) 탐지
-- **설정 스캔**: Dockerfile, Kubernetes, Terraform 등 IaC 파일 보안 설정 오류 탐지
-- **주요 탐지 대상**:
-  - 📋 Dockerfile: USER 미지정, 불필요한 권한, 보안 모범 사례 위반
-  - ☸️ Kubernetes: privileged 모드, hostPath 마운트, securityContext 설정
-  - 🏗️ Terraform/CloudFormation: 퍼블릭 버킷, 암호화 미설정, 보안 그룹 규칙
-- **사용 방법**:
-  1. 메인 페이지 → "👮 컴플라이언스 스캔" 클릭
-  2. 스캔할 경로 입력 (예: `/var/www/html`, `/app`)
-  3. 스캔 실행 → 결과 확인 및 저장
-- 스캔 기록에서 `👮설정` 태그로 구분
+
+#### 📋 컴플라이언스 표준 체크
+Docker 이미지가 보안 표준을 준수하는지 검사:
+- **Docker CIS Benchmark 1.6**: CIS Docker 보안 벤치마크
+- **Docker CIS (Latest)**: 최신 CIS 표준 적용
+- **검사 항목**: 권한 설정, 네트워크 구성, 파일시스템 보안 등
+- **결과 표시**: 준수(PASS) / 미준수(FAIL) 개수, 준수율(%)
+
+#### ⚙️ 설정 오류 스캔 (Misconfig)
+IaC 파일의 보안 설정 오류 탐지:
+- 📋 **Dockerfile**: USER 미지정, 불필요한 권한, 보안 모범 사례 위반
+- ☸️ **Kubernetes**: privileged 모드, hostPath 마운트, securityContext 설정
+- 🏗️ **Terraform/CloudFormation**: 퍼블릭 버킷, 암호화 미설정, 보안 그룹 규칙
+
+#### 사용 방법
+1. 메인 페이지 → "👮 컴플라이언스 스캔" 클릭
+2. **컴플라이언스 표준 탭**: 표준 선택 → 이미지 선택 → 체크 실행
+3. **설정 오류 스캔 탭**: 경로 입력 → 스캔 실행
+4. 스캔 기록에서 `👮설정` 태그로 구분
 
 ### 6. 📊 운영 성과 지표 (KPI) - MTTR
 - **MTTR (Mean Time To Remediate)**: 평균 조치 기간
