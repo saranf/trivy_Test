@@ -234,6 +234,14 @@ $containers = getRunningContainers();
             <button onclick="hideSaveArea()" style="background:#6c757d;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px;margin-left:10px;">취소</button>
         </div>
         <div id="saveMessage" style="display:none; margin-top:10px; padding:10px; border-radius:4px; text-align:center;"></div>
+
+        <!-- Grafana 링크 영역 -->
+        <div id="grafanaArea" style="display:none; margin-top:20px; padding:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:8px;">
+            <h3 style="color:white; margin:0 0 10px 0;">📊 Grafana 모니터링</h3>
+            <p style="color:rgba(255,255,255,0.9); margin:0 0 15px 0;">스캔한 컨테이너의 상세 메트릭을 확인하세요</p>
+            <a id="grafanaContainerLink" href="#" target="_blank" style="display:inline-block; background:white; color:#667eea; padding:10px 20px; border-radius:4px; text-decoration:none; font-weight:bold; margin-right:10px;">🐳 이 컨테이너 보기</a>
+            <a href="http://localhost:3000/d/trivy-security/trivy-security-scanner?orgId=1" target="_blank" style="display:inline-block; background:rgba(255,255,255,0.2); color:white; padding:10px 20px; border-radius:4px; text-decoration:none;">📈 전체 대시보드</a>
+        </div>
     </div>
     <script>
         let lastScanData = null;
@@ -264,11 +272,18 @@ $containers = getRunningContainers();
                 const result = await response.json();
                 resultDiv.innerHTML = marked.parse(result.markdown);
 
-                // 스캔 성공 시 저장 버튼 표시
+                // 스캔 성공 시 저장 버튼 및 Grafana 링크 표시
                 if (result.success && result.data) {
                     lastScanData = result.data;
                     lastScanTarget = result.target;
                     saveArea.style.display = 'block';
+
+                    // Grafana 링크 표시
+                    const grafanaArea = document.getElementById('grafanaArea');
+                    const grafanaLink = document.getElementById('grafanaContainerLink');
+                    const containerName = getContainerName(target);
+                    grafanaLink.href = `http://localhost:3000/d/trivy-security/trivy-security-scanner?orgId=1&var-container=${encodeURIComponent(containerName)}&var-image=${encodeURIComponent(target)}`;
+                    grafanaArea.style.display = 'block';
                 }
             } catch (e) {
                 resultDiv.innerHTML = '<p style="color:red;">오류가 발생했습니다: ' + e.message + '</p>';
@@ -322,6 +337,20 @@ $containers = getRunningContainers();
 
         function hideSaveArea() {
             document.getElementById('saveArea').style.display = 'none';
+        }
+
+        function getContainerName(imageOrName) {
+            // 컨테이너 목록에서 이름 추출
+            const select = document.getElementById('containerSelect');
+            if (select.tagName === 'SELECT') {
+                const selectedOption = select.options[select.selectedIndex];
+                if (selectedOption && selectedOption.text) {
+                    const match = selectedOption.text.match(/\[([^\]]+)\]/);
+                    if (match) return match[1];
+                }
+            }
+            // 이미지 이름에서 컨테이너 이름 추정
+            return imageOrName.replace(/[/:]/g, '_');
         }
     </script>
 </body>
