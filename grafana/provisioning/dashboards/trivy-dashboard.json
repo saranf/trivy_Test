@@ -1,0 +1,147 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "trivy-security",
+    "title": "Trivy Security Scanner",
+    "tags": ["trivy", "security"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "refresh": "30s",
+    "templating": {
+      "list": [
+        {
+          "name": "container",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(container_memory_usage_bytes, name)",
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true,
+          "allValue": ".*",
+          "current": {"text": "All", "value": "$__all"}
+        },
+        {
+          "name": "image",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(trivy_image_vulnerabilities, image)",
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true,
+          "allValue": ".*",
+          "current": {"text": "All", "value": "$__all"}
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Scans",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_total_scans", "refId": "A"}],
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue", "value": null}]}}}
+      },
+      {
+        "id": 2,
+        "title": "Scans (24h)",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_scans_24h", "refId": "A"}],
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}}
+      },
+      {
+        "id": 3,
+        "title": "Total Vulnerabilities",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_vulnerabilities_total", "refId": "A"}],
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "yellow", "value": null}, {"color": "red", "value": 100}]}}}
+      },
+      {
+        "id": 4,
+        "title": "Critical Vulnerabilities",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_vulnerabilities_by_severity{severity=\"critical\"}", "refId": "A"}],
+        "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "red"}}}
+      },
+      {
+        "id": 5,
+        "title": "Vulnerabilities by Severity",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 4, "w": 8, "h": 8},
+        "targets": [{"expr": "trivy_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A"}],
+        "options": {"legend": {"displayMode": "table", "placement": "right"}}
+      },
+      {
+        "id": 6,
+        "title": "Scans by Source",
+        "type": "piechart",
+        "gridPos": {"x": 8, "y": 4, "w": 8, "h": 8},
+        "targets": [{"expr": "trivy_scans_by_source", "legendFormat": "{{source}}", "refId": "A"}],
+        "options": {"legend": {"displayMode": "table", "placement": "right"}}
+      },
+      {
+        "id": 7,
+        "title": "Vulnerabilities per Image",
+        "type": "bargauge",
+        "gridPos": {"x": 16, "y": 4, "w": 8, "h": 8},
+        "targets": [{"expr": "trivy_image_vulnerabilities", "legendFormat": "{{image}}", "refId": "A"}],
+        "options": {"orientation": "horizontal", "displayMode": "gradient"},
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
+      },
+      {
+        "id": 8,
+        "title": "Critical Vulns per Image",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 12, "w": 24, "h": 6},
+        "targets": [{"expr": "trivy_image_critical", "legendFormat": "{{image}}", "refId": "A", "format": "table", "instant": true}],
+        "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}}}]
+      },
+      {
+        "id": 9,
+        "title": "Container CPU Usage",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+        "targets": [{"expr": "rate(container_cpu_usage_seconds_total{name=~\"$container\"}[5m]) * 100", "legendFormat": "{{name}}", "refId": "A"}],
+        "fieldConfig": {"defaults": {"unit": "percent"}}
+      },
+      {
+        "id": 10,
+        "title": "Container Memory Usage",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+        "targets": [{"expr": "container_memory_usage_bytes{name=~\"$container\"} / 1024 / 1024", "legendFormat": "{{name}}", "refId": "A"}],
+        "fieldConfig": {"defaults": {"unit": "decmbytes"}}
+      },
+      {
+        "id": 11,
+        "title": "Container Network RX",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 26, "w": 12, "h": 8},
+        "targets": [{"expr": "rate(container_network_receive_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A"}],
+        "fieldConfig": {"defaults": {"unit": "Bps"}}
+      },
+      {
+        "id": 12,
+        "title": "Container Network TX",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 26, "w": 12, "h": 8},
+        "targets": [{"expr": "rate(container_network_transmit_bytes_total{name=~\"$container\"}[5m])", "legendFormat": "{{name}}", "refId": "A"}],
+        "fieldConfig": {"defaults": {"unit": "Bps"}}
+      },
+      {
+        "id": 13,
+        "title": "Image Vulnerabilities (Selected)",
+        "type": "bargauge",
+        "gridPos": {"x": 0, "y": 34, "w": 24, "h": 6},
+        "targets": [{"expr": "trivy_image_vulnerabilities{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A"}],
+        "options": {"orientation": "horizontal", "displayMode": "gradient"},
+        "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
+      }
+    ]
+  },
+  "overwrite": true
+}
+

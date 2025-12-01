@@ -28,7 +28,7 @@ services:
       - SMTP_PORT=465
       - SMTP_USER=qorwlsdk1995@naver.com
       - SMTP_PASS=08269474tkfkd!
-      - FROM_EMAIL=qorwlsdk1997@naver.com
+      - FROM_EMAIL=qorwlsdk1995@naver.com
       - FROM_NAME=Trivy Scanner
     depends_on:
       - mysql
@@ -59,7 +59,56 @@ services:
     networks:
       - app-network
 
+  # Prometheus - 메트릭 수집
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Grafana - 시각화
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # cAdvisor - 컨테이너 메트릭 수집
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
 

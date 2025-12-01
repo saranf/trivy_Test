@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus 자체 메트릭
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # cAdvisor - 컨테이너 메트릭
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Trivy 스캔 메트릭 (웹서버에서 제공)
+  - job_name: 'trivy_scanner'
+    static_configs:
+      - targets: ['nginx:80']
+    metrics_path: '/metrics.php'
+
