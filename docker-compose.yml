@@ -24,11 +24,7 @@ services:
       - ./webserver/entrypoint.sh:/entrypoint.sh  # 시작 스크립트
     entrypoint: ["/entrypoint.sh"]
     environment:
-      - SMTP_HOST=smtp.naver.com
-      - SMTP_PORT=465
-      - SMTP_USER=qorwlsdk1995@naver.com
-      - SMTP_PASS=08269474tkfkd!
-      - FROM_EMAIL=qorwlsdk1995@naver.com
+      - FROM_EMAIL=trivy-scanner@monitor.rmstudio.co.kr
       - FROM_NAME=Trivy Scanner
     depends_on:
       - mysql
@@ -106,6 +102,16 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Postfix - 메일 발송 서버
+  mailserver:
+    image: boky/postfix
+    environment:
+      - ALLOWED_SENDER_DOMAINS=monitor.rmstudio.co.kr rmstudio.co.kr
+      - HOSTNAME=mail.monitor.rmstudio.co.kr
     restart: unless-stopped
     networks:
       - app-network
