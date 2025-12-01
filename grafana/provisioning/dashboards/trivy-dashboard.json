@@ -198,6 +198,34 @@
         "targets": [{"expr": "trivy_image_vulnerabilities{image=~\"$image\"}", "legendFormat": "{{image}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
         "options": {"orientation": "horizontal", "displayMode": "gradient"},
         "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]}}}
+      },
+      {
+        "id": 14,
+        "title": "🛡️ Active Exceptions",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 0, "y": 40, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_exceptions_active", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "blue"}}}
+      },
+      {
+        "id": 15,
+        "title": "⏰ Expired Exceptions",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 6, "y": 40, "w": 6, "h": 4},
+        "targets": [{"expr": "trivy_exceptions_expired", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "orange"}}}
+      },
+      {
+        "id": 16,
+        "title": "Excepted Vulnerabilities by Severity",
+        "type": "piechart",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8},
+        "targets": [{"expr": "trivy_excepted_vulnerabilities_by_severity", "legendFormat": "{{severity}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        "options": {"legend": {"displayMode": "table", "placement": "right"}, "pieType": "donut"},
+        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}}
       }
     ]
 }

@@ -56,7 +56,45 @@ try {
     while ($row = $result->fetch_assoc()) {
         $imageStats[] = $row;
     }
-    
+
+    // 예외 처리 통계
+    $exceptionStats = [
+        'total' => 0,
+        'active' => 0,
+        'expired' => 0,
+        'by_severity' => ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0]
+    ];
+
+    // 테이블 존재 여부 확인
+    $tableCheck = $conn->query("SHOW TABLES LIKE 'vulnerability_exceptions'");
+    if ($tableCheck && $tableCheck->num_rows > 0) {
+        // 전체 예외 수
+        $result = $conn->query("SELECT COUNT(*) as cnt FROM vulnerability_exceptions WHERE deleted_at IS NULL");
+        $exceptionStats['total'] = $result->fetch_assoc()['cnt'] ?? 0;
+
+        // 활성 예외 수
+        $result = $conn->query("SELECT COUNT(*) as cnt FROM vulnerability_exceptions WHERE deleted_at IS NULL AND expires_at > NOW()");
+        $exceptionStats['active'] = $result->fetch_assoc()['cnt'] ?? 0;
+
+        // 만료된 예외 수
+        $exceptionStats['expired'] = $exceptionStats['total'] - $exceptionStats['active'];
+
+        // 예외 처리된 취약점의 심각도별 카운트 (최신 스캔에서)
+        $result = $conn->query("
+            SELECT sv.severity, COUNT(DISTINCT sv.vulnerability) as cnt
+            FROM scan_vulnerabilities sv
+            INNER JOIN vulnerability_exceptions ve ON sv.vulnerability = ve.vulnerability_id
+            WHERE ve.deleted_at IS NULL AND ve.expires_at > NOW()
+            GROUP BY sv.severity
+        ");
+        while ($row = $result->fetch_assoc()) {
+            $sev = strtoupper($row['severity']);
+            if (isset($exceptionStats['by_severity'][$sev])) {
+                $exceptionStats['by_severity'][$sev] = (int)$row['cnt'];
+            }
+        }
+    }
+
     $conn->close();
     
     // Prometheus 형식 출력
@@ -98,7 +136,28 @@ try {
     foreach ($imageStats as $img) {
         echo "trivy_image_critical{image=\"{$img['image_name']}\"} {$img['critical_count']}\n";
     }
-    
+    echo "\n";
+
+    // 예외 처리 통계
+    echo "# HELP trivy_exceptions_total Total number of vulnerability exceptions\n";
+    echo "# TYPE trivy_exceptions_total gauge\n";
+    echo "trivy_exceptions_total " . $exceptionStats['total'] . "\n\n";
+
+    echo "# HELP trivy_exceptions_active Currently active exceptions\n";
+    echo "# TYPE trivy_exceptions_active gauge\n";
+    echo "trivy_exceptions_active " . $exceptionStats['active'] . "\n\n";
+
+    echo "# HELP trivy_exceptions_expired Expired exceptions\n";
+    echo "# TYPE trivy_exceptions_expired gauge\n";
+    echo "trivy_exceptions_expired " . $exceptionStats['expired'] . "\n\n";
+
+    echo "# HELP trivy_excepted_vulnerabilities_by_severity Excepted vulnerabilities by severity\n";
+    echo "# TYPE trivy_excepted_vulnerabilities_by_severity gauge\n";
+    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"critical\"} " . $exceptionStats['by_severity']['CRITICAL'] . "\n";
+    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"high\"} " . $exceptionStats['by_severity']['HIGH'] . "\n";
+    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"medium\"} " . $exceptionStats['by_severity']['MEDIUM'] . "\n";
+    echo "trivy_excepted_vulnerabilities_by_severity{severity=\"low\"} " . $exceptionStats['by_severity']['LOW'] . "\n";
+
 } catch (Exception $e) {
     echo "# Error: " . $e->getMessage() . "\n";
 }

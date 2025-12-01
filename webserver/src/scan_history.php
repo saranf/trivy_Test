@@ -35,7 +35,26 @@ if ($action === 'csv' && isset($_GET['id'])) {
 
 if ($action === 'detail' && isset($_GET['id'])) {
     header('Content-Type: application/json');
-    echo json_encode(getScanVulnerabilities($conn, (int)$_GET['id']));
+    $vulns = getScanVulnerabilities($conn, (int)$_GET['id']);
+
+    // 예외 처리 상태 추가
+    $activeExceptions = getActiveExceptions($conn);
+    $exceptedMap = [];
+    foreach ($activeExceptions as $ex) {
+        $exceptedMap[$ex['vulnerability_id']] = $ex;
+    }
+
+    foreach ($vulns as &$v) {
+        if (isset($exceptedMap[$v['vulnerability']])) {
+            $v['excepted'] = true;
+            $v['exception_reason'] = $exceptedMap[$v['vulnerability']]['reason'];
+            $v['exception_expires'] = $exceptedMap[$v['vulnerability']]['expires_at'];
+        } else {
+            $v['excepted'] = false;
+        }
+    }
+
+    echo json_encode($vulns);
     exit;
 }
 
@@ -282,16 +301,28 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
             const res = await fetch('?action=detail&id=' + scanId);
             const data = await res.json();
 
-            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>예외처리</th></tr></thead><tbody>';
+            let html = '<table class="detail-table"><thead><tr><th>Library</th><th>Vulnerability</th><th>Severity</th><th>Installed</th><th>Fixed</th><th>상태</th></tr></thead><tbody>';
             data.forEach(v => {
                 const badgeClass = v.severity.toLowerCase();
-                html += `<tr>
+                const isExcepted = v.excepted === true;
+                const rowStyle = isExcepted ? 'background: #e3f2fd;' : '';
+
+                let statusCell = '';
+                if (isExcepted) {
+                    const expiresDate = v.exception_expires ? v.exception_expires.split(' ')[0] : '';
+                    statusCell = `<span style="display:inline-block;background:#1976d2;color:white;padding:3px 8px;border-radius:12px;font-size:11px;">🛡️ 예외</span>
+                        <br><small style="color:#666;">~${expiresDate}</small>`;
+                } else {
+                    statusCell = `<button class="btn" style="background:#6c757d;font-size:11px;" onclick="showExceptionModal('${v.vulnerability}', '${v.library}')">예외 등록</button>`;
+                }
+
+                html += `<tr style="${rowStyle}">
                     <td>${v.library}</td>
                     <td>${v.vulnerability}</td>
                     <td><span class="badge ${badgeClass}">${v.severity}</span></td>
                     <td>${v.installed_version}</td>
                     <td>${v.fixed_version || '-'}</td>
-                    <td><button class="btn" style="background:#6c757d;font-size:11px;" onclick="showExceptionModal('${v.vulnerability}', '${v.library}')">🛡️ 예외</button></td>
+                    <td>${statusCell}</td>
                 </tr>`;
             });
             html += '</tbody></table>';
