@@ -194,8 +194,8 @@ function getKevStats() {
     ];
 }
 
-// API 엔드포인트 처리
-if (isset($_GET['action'])) {
+// API 엔드포인트 처리 (직접 호출시에만 - require_once로 포함될 때는 실행 안함)
+if (basename($_SERVER['SCRIPT_FILENAME']) === 'cisa_kev.php' && isset($_GET['action'])) {
     header('Content-Type: application/json');
 
     $action = $_GET['action'];

@@ -70,6 +70,12 @@ if ($action === 'detail' && isset($_GET['id'])) {
     header('Content-Type: application/json');
 
     try {
+        // DB 연결 확인
+        if (!$conn) {
+            echo json_encode(['error' => 'DB 연결 실패']);
+            exit;
+        }
+
         $vulns = getScanVulnerabilities($conn, (int)$_GET['id']);
 
         // null 또는 배열이 아닌 경우 빈 배열 반환
