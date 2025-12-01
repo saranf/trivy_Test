@@ -1,18 +1,34 @@
 <?php
-// MySQL 연결 설정
-function getDbConnection() {
+// MySQL 연결 설정 (재시도 로직 포함)
+function getDbConnection($maxRetries = 5, $retryDelay = 3) {
     $host = "mysql";  // Docker 서비스 이름
     $username = "trivy_user";
     $password = "trivy_password";
     $dbname = "trivy_db";
 
-    try {
-        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-        $conn = new mysqli($host, $username, $password, $dbname);
-        return $conn;
-    } catch (mysqli_sql_exception $e) {
-        return null;
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    // 🔄 MySQL 초기화 대기를 위한 재시도 로직
+    for ($i = 0; $i < $maxRetries; $i++) {
+        try {
+            $conn = new mysqli($host, $username, $password, $dbname);
+            if (!$conn->connect_error) {
+                // Timezone 설정 (PHP와 동기화)
+                $conn->query("SET time_zone = '+09:00'");
+                return $conn;
+            }
+        } catch (mysqli_sql_exception $e) {
+            // 마지막 시도가 아니면 대기 후 재시도
+            if ($i < $maxRetries - 1) {
+                error_log("MySQL connection failed (attempt " . ($i + 1) . "/$maxRetries): " . $e->getMessage());
+                sleep($retryDelay);
+            } else {
+                error_log("MySQL connection failed after $maxRetries attempts: " . $e->getMessage());
+                return null;
+            }
+        }
     }
+    return null;
 }
 
 // 컬럼 존재 여부 확인

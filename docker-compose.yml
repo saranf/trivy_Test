@@ -150,6 +150,7 @@ services:
   # 🔭 Promtail - 로그 수집기
   promtail:
     image: grafana/promtail:2.9.0
+    user: root  # 🚨 Docker 로그 파일 읽기 권한 필요
     volumes:
       - ./promtail/promtail-config.yml:/etc/promtail/config.yml
       - /var/run/docker.sock:/var/run/docker.sock

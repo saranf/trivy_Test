@@ -356,6 +356,42 @@ docker volume rm trivy_test_mysql_data
 - 로그 시간이 한국 시간으로 표시
 - 스캔 기록 시간도 KST로 저장
 
+### PHP/DB Timezone 동기화
+- **PHP**: `entrypoint.sh`에서 `/usr/local/etc/php/conf.d/timezone.ini` 생성
+- **MySQL**: `getDbConnection()`에서 `SET time_zone = '+09:00'` 실행
+- 웹 화면과 DB 시간이 항상 일치
+
+---
+
+## 🔄 안정성 설정
+
+### MySQL 연결 재시도 (Race Condition 방지)
+컨테이너 시작 시 MySQL이 준비되지 않았을 때를 대비한 재시도 로직:
+
+```php
+// db_functions.php
+function getDbConnection($maxRetries = 5, $retryDelay = 3) {
+    for ($i = 0; $i < $maxRetries; $i++) {
+        try {
+            $conn = new mysqli(...);
+            if (!$conn->connect_error) return $conn;
+        } catch (mysqli_sql_exception $e) {
+            if ($i < $maxRetries - 1) sleep($retryDelay);
+        }
+    }
+    return null;
+}
+```
+
+### Promtail 로그 수집 권한
+Docker 로그 파일 읽기를 위해 `user: root` 설정:
+
+```yaml
+# docker-compose.yml
+promtail:
+  user: root  # /var/lib/docker/containers 접근 권한
+```
+
 ---
 
 ## 📧 환경변수 설정 (docker-compose.yml)

@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# ==============================================
+# 1️⃣ PHP Timezone 설정 (KST)
+# ==============================================
+echo "date.timezone = Asia/Seoul" > /usr/local/etc/php/conf.d/timezone.ini
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] PHP Timezone set to Asia/Seoul"
+
 # Docker 소켓 권한 변경 (www-data가 접근 가능하도록)
 chmod 666 /var/run/docker.sock
 
