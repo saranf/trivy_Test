@@ -297,7 +297,7 @@ if ($action === 'compliance') {
         'markdown' => $markdown,
         'data' => $result['data'],
         'target' => $target,
-        'standard' => $standard
+        'standard' => $scanType
     ]);
     exit;
 }

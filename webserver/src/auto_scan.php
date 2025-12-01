@@ -43,17 +43,23 @@ function runTrivyScan($image, $severity = 'HIGH,CRITICAL') {
 
 // 실행 중인 컨테이너 목록
 function getRunningContainers() {
-    exec('docker ps --format "{{.Image}}|{{.Names}}"', $output, $result_code);
+    $output = [];
+    $result_code = 0;
+    exec('docker ps --format "{{.Image}}|{{.Names}}" 2>&1', $output, $result_code);
     $containers = [];
-    if ($result_code === 0) {
-        foreach ($output as $line) {
-            $parts = explode('|', $line);
-            if (count($parts) === 2) {
-                $containers[] = [
-                    'image' => $parts[0],
-                    'name' => $parts[1]
-                ];
-            }
+
+    if ($result_code !== 0) {
+        error_log("docker ps failed with code $result_code: " . implode("\n", $output));
+        return $containers;
+    }
+
+    foreach ($output as $line) {
+        $parts = explode('|', $line);
+        if (count($parts) === 2) {
+            $containers[] = [
+                'image' => $parts[0],
+                'name' => $parts[1]
+            ];
         }
     }
     return $containers;
@@ -72,7 +78,7 @@ function isRecentlyScanned($conn, $imageName, $hours = 1) {
 
 $action = $_GET['action'] ?? '';
 
-// scan_all은 로그인한 Operator 이상만 가능
+// scan_all은 로그인한 Operator 이상만 가능 (demo도 허용)
 if ($action === 'scan_all') {
     session_start();
     if (!isset($_SESSION['user'])) {
@@ -80,7 +86,8 @@ if ($action === 'scan_all') {
         exit;
     }
     $userRole = $_SESSION['user']['role'] ?? '';
-    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    // demo는 operator와 동일 레벨 (스캔 가능)
+    $levels = ['viewer' => 1, 'demo' => 2, 'operator' => 2, 'admin' => 3];
     if (($levels[$userRole] ?? 0) < 2) {
         echo json_encode(['success' => false, 'message' => 'Operator 이상 권한이 필요합니다.']);
         exit;

@@ -76,16 +76,31 @@ $extension = ($format === 'spdx-json' || $format === 'spdx') ? 'spdx.json' : 'cd
 // 이미지명 sanitize
 $safeImage = escapeshellarg($imageName);
 
-// Trivy SBOM 생성 명령어
-$command = "trivy image --format $trivyFormat --quiet $safeImage 2>/dev/null";
+// Trivy SBOM 생성 명령어 (에러 캡처)
+$command = "trivy image --format $trivyFormat --quiet $safeImage 2>&1";
 
 // 실행
-$output = shell_exec($command);
+$output = [];
+$returnCode = 0;
+exec($command, $output, $returnCode);
+$result = implode("\n", $output);
 
-if (empty($output)) {
+if (empty($result) || $returnCode !== 0) {
     http_response_code(500);
-    die('SBOM 생성 실패. 이미지가 존재하는지 확인하세요: ' . htmlspecialchars($imageName));
+    echo "SBOM 생성 실패\n";
+    echo "이미지: " . htmlspecialchars($imageName) . "\n";
+    echo "Exit Code: $returnCode\n\n";
+    if (!empty($result)) {
+        echo "Trivy 출력:\n$result\n";
+    }
+    echo "\n가능한 원인:\n";
+    echo "- 이미지가 로컬에 없음 (docker pull 필요)\n";
+    echo "- 이미지명이 잘못됨\n";
+    echo "- Trivy 스캔 중 오류 발생\n";
+    exit;
 }
+
+$output = $result;
 
 // JSON 유효성 검사
 $json = json_decode($output);
