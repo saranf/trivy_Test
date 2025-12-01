@@ -204,10 +204,14 @@ function generateDiffHtml($scan, $diff, $newCounts) {
     $html .= '<p><strong>스캔일시:</strong> ' . $scan['scan_date'] . '</p>';
 
     // 요약 카드
+    $exceptedCount = count($diff['excepted'] ?? []);
     $html .= '<div class="summary-box">';
     $html .= '<div class="summary-card card-new"><div class="card-number">' . count($diff['new']) . '</div><div class="card-label">🆕 신규 취약점</div></div>';
     $html .= '<div class="summary-card card-fixed"><div class="card-number">' . count($diff['fixed']) . '</div><div class="card-label">✅ 조치 완료</div></div>';
     $html .= '<div class="summary-card card-persistent"><div class="card-number">' . count($diff['persistent']) . '</div><div class="card-label">⏳ 미조치</div></div>';
+    if ($exceptedCount > 0) {
+        $html .= '<div class="summary-card" style="background:#e3f2fd;border:2px solid #1976d2;"><div class="card-number">' . $exceptedCount . '</div><div class="card-label">🛡️ 예외 처리</div></div>';
+    }
     $html .= '</div>';
 
     // 신규 취약점 (가장 중요)
@@ -235,6 +239,14 @@ function generateDiffHtml($scan, $diff, $newCounts) {
         $html .= '</div>';
     }
 
+    // 예외 처리된 항목
+    if (!empty($diff['excepted'])) {
+        $html .= '<div style="border-left:4px solid #1976d2;padding-left:15px;"><h2>🛡️ 예외 처리됨 (' . $exceptedCount . '건)</h2>';
+        $html .= '<p style="color:#666;font-size:13px;">아래 취약점은 예외 처리되어 집계에서 제외되었습니다.</p>';
+        $html .= renderExceptedTable($diff['excepted']);
+        $html .= '</div>';
+    }
+
     $html .= '<hr><p style="color:#666;font-size:12px;">이 메일은 Trivy Security Scanner에서 자동 발송되었습니다.</p>';
     $html .= '</div></body></html>';
 
@@ -257,17 +269,34 @@ function renderVulnTable($vulns) {
     return $html;
 }
 
+function renderExceptedTable($vulns) {
+    $html = '<table><thead><tr><th>Library</th><th>CVE</th><th>심각도</th><th>예외 사유</th><th>만료일</th></tr></thead><tbody>';
+    foreach ($vulns as $v) {
+        $sevClass = strtolower($v['severity']);
+        $expiresDate = isset($v['exception_expires']) ? date('Y-m-d', strtotime($v['exception_expires'])) : '-';
+        $html .= '<tr style="background:#f0f7ff;">';
+        $html .= '<td>' . htmlspecialchars($v['library']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($v['vulnerability']) . '</td>';
+        $html .= '<td><span class="' . $sevClass . '">' . $v['severity'] . '</span></td>';
+        $html .= '<td>' . htmlspecialchars($v['exception_reason'] ?? '-') . '</td>';
+        $html .= '<td>' . $expiresDate . '</td>';
+        $html .= '</tr>';
+    }
+    $html .= '</tbody></table>';
+    return $html;
+}
+
 /**
  * Diff CSV 생성
  */
 function generateDiffCsv($scan, $diff) {
     $lines = [];
-    $lines[] = "Status,Image,Library,Vulnerability,Severity,Installed Version,Fixed Version";
+    $lines[] = "Status,Image,Library,Vulnerability,Severity,Installed Version,Fixed Version,Exception Reason,Exception Expires";
 
     $imageName = $scan['image_name'];
 
     foreach ($diff['new'] as $v) {
-        $lines[] = sprintf('"NEW","%s","%s","%s","%s","%s","%s"',
+        $lines[] = sprintf('"NEW","%s","%s","%s","%s","%s","%s","",""',
             str_replace('"', '""', $imageName),
             str_replace('"', '""', $v['library']),
             str_replace('"', '""', $v['vulnerability']),
@@ -278,7 +307,7 @@ function generateDiffCsv($scan, $diff) {
     }
 
     foreach ($diff['fixed'] as $v) {
-        $lines[] = sprintf('"FIXED","%s","%s","%s","%s","%s","%s"',
+        $lines[] = sprintf('"FIXED","%s","%s","%s","%s","%s","%s","",""',
             str_replace('"', '""', $imageName),
             str_replace('"', '""', $v['library']),
             str_replace('"', '""', $v['vulnerability']),
@@ -289,13 +318,28 @@ function generateDiffCsv($scan, $diff) {
     }
 
     foreach ($diff['persistent'] as $v) {
-        $lines[] = sprintf('"PERSISTENT","%s","%s","%s","%s","%s","%s"',
+        $lines[] = sprintf('"PERSISTENT","%s","%s","%s","%s","%s","%s","",""',
             str_replace('"', '""', $imageName),
             str_replace('"', '""', $v['library']),
             str_replace('"', '""', $v['vulnerability']),
             $v['severity'],
             str_replace('"', '""', $v['installed_version']),
             str_replace('"', '""', $v['fixed_version'] ?: '')
+        );
+    }
+
+    // 예외 처리된 항목
+    foreach ($diff['excepted'] ?? [] as $v) {
+        $expiresDate = isset($v['exception_expires']) ? date('Y-m-d', strtotime($v['exception_expires'])) : '';
+        $lines[] = sprintf('"EXCEPTED","%s","%s","%s","%s","%s","%s","%s","%s"',
+            str_replace('"', '""', $imageName),
+            str_replace('"', '""', $v['library']),
+            str_replace('"', '""', $v['vulnerability']),
+            $v['severity'],
+            str_replace('"', '""', $v['installed_version']),
+            str_replace('"', '""', $v['fixed_version'] ?: ''),
+            str_replace('"', '""', $v['exception_reason'] ?? ''),
+            $expiresDate
         );
     }
 
