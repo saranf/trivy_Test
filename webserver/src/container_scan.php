@@ -1,4 +1,7 @@
 <?php
+require_once 'auth.php';
+$user = requireRole('operator');  // Operator 이상만 접근 가능
+
 header('Content-Type: text/html; charset=utf-8');
 
 // 실행 중인 컨테이너 목록 가져오기
@@ -144,6 +147,10 @@ if ($action === 'save') {
     if ($conn) {
         initDatabase($conn);
         $scanId = saveScanResult($conn, $input['target'], $input['data']);
+
+        // 감사 로그
+        auditLog($conn, 'MANUAL_SCAN', 'scan', $scanId, "image: {$input['target']}");
+
         $conn->close();
         echo json_encode(['success' => true, 'scanId' => $scanId, 'message' => "스캔 결과가 저장되었습니다. (ID: $scanId)"]);
     } else {
@@ -197,9 +204,11 @@ $containers = getRunningContainers();
         .loading { text-align: center; padding: 40px; color: #666; }
         .refresh-btn { background: #28a745; }
         .refresh-btn:hover { background: #1e7e34; }
+        <?= getAuthStyles() ?>
     </style>
 </head>
 <body>
+    <?= getNavMenu() ?>
     <div class="container">
         <h1>🐳 Docker Container Trivy Scanner</h1>
         <div class="controls">

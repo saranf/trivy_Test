@@ -6,9 +6,27 @@
 
 error_reporting(0);
 ini_set('display_errors', 0);
-header('Content-Type: application/json');
 
+session_start();
 require_once 'db_functions.php';
+
+// 로그인 확인 (API이므로 JSON으로 에러 반환)
+if (!isset($_SESSION['user'])) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => '로그인이 필요합니다.']);
+    exit;
+}
+
+// Operator 이상 권한 확인
+$userRole = $_SESSION['user']['role'] ?? '';
+$levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+if (($levels[$userRole] ?? 0) < 2) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Operator 이상 권한이 필요합니다.']);
+    exit;
+}
+
+header('Content-Type: application/json');
 
 $conn = getDbConnection();
 if (!$conn) {
@@ -22,12 +40,12 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 // 예외 추가
 if ($action === 'add') {
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     $vulnId = $input['vulnerability_id'] ?? '';
     $imagePattern = $input['image_pattern'] ?? '*';
     $reason = $input['reason'] ?? '';
     $expiresAt = $input['expires_at'] ?? '';
-    $createdBy = $input['created_by'] ?? 'admin';
+    $createdBy = $_SESSION['user']['username'] ?? 'admin';
     
     if (empty($vulnId) || empty($reason) || empty($expiresAt)) {
         echo json_encode(['success' => false, 'message' => '필수 항목을 입력하세요. (vulnerability_id, reason, expires_at)']);
@@ -42,8 +60,13 @@ if ($action === 'add') {
     }
     
     $id = addException($conn, $vulnId, $imagePattern, $reason, $expiresAt, $createdBy);
+
+    // 감사 로그
+    logAudit($conn, $_SESSION['user']['id'] ?? null, $_SESSION['user']['username'] ?? 'unknown',
+             'ADD_EXCEPTION', 'exception', $id, "vuln: {$vulnId}, expires: {$expiresAt}");
+
     echo json_encode([
-        'success' => true, 
+        'success' => true,
         'message' => '예외 처리가 등록되었습니다.',
         'exception_id' => $id
     ]);

@@ -1,5 +1,6 @@
 <?php
-require_once 'db_functions.php';
+require_once 'auth.php';
+$user = requireRole('operator');  // Operator 이상만 접근 가능
 
 $conn = getDbConnection();
 if ($conn) {
@@ -9,6 +10,7 @@ if ($conn) {
 // 삭제 처리
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
     deleteException($conn, (int)$_GET['id']);
+    auditLog($conn, 'DELETE_EXCEPTION', 'exception', $_GET['id'], null);
     header('Location: exceptions.php');
     exit;
 }
@@ -21,12 +23,11 @@ $exceptions = $conn ? getAllExceptions($conn) : [];
     <meta charset="UTF-8">
     <title>예외 처리 관리</title>
     <style>
+        <?= getAuthStyles() ?>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         h1 { color: #333; }
-        .back-link { margin-bottom: 20px; }
-        .back-link a { color: #007bff; text-decoration: none; }
         .info-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1976d2; }
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
@@ -43,11 +44,8 @@ $exceptions = $conn ? getAllExceptions($conn) : [];
     </style>
 </head>
 <body>
+    <?= getNavMenu() ?>
     <div class="container">
-        <div class="back-link">
-            <a href="index.php">← 메인으로</a> | 
-            <a href="scan_history.php">스캔 기록</a>
-        </div>
         <h1>🛡️ 예외 처리 관리 (Risk Acceptance)</h1>
         
         <div class="info-box">

@@ -72,6 +72,21 @@ function isRecentlyScanned($conn, $imageName, $hours = 1) {
 
 $action = $_GET['action'] ?? '';
 
+// scan_all은 로그인한 Operator 이상만 가능
+if ($action === 'scan_all') {
+    session_start();
+    if (!isset($_SESSION['user'])) {
+        echo json_encode(['success' => false, 'message' => '로그인이 필요합니다.']);
+        exit;
+    }
+    $userRole = $_SESSION['user']['role'] ?? '';
+    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    if (($levels[$userRole] ?? 0) < 2) {
+        echo json_encode(['success' => false, 'message' => 'Operator 이상 권한이 필요합니다.']);
+        exit;
+    }
+}
+
 // 특정 이미지 스캔 및 저장
 if ($action === 'scan_image') {
     global $ALERT_EMAIL, $ALERT_ON_CRITICAL;
@@ -158,7 +173,14 @@ if ($action === 'scan_all') {
             $results[] = ['image' => $image, 'status' => 'failed'];
         }
     }
-    
+
+    // Bulk 스캔 감사 로그
+    if (isset($_SESSION['user'])) {
+        $scannedCount = count(array_filter($results, fn($r) => $r['status'] === 'scanned'));
+        logAudit($conn, $_SESSION['user']['id'], $_SESSION['user']['username'],
+                 'BULK_SCAN', 'scan', null, "scanned: {$scannedCount} images");
+    }
+
     $conn->close();
     echo json_encode(['success' => true, 'results' => $results]);
     exit;

@@ -79,6 +79,51 @@ function initDatabase($conn) {
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY library VARCHAR(500)");
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY installed_version VARCHAR(500)");
     @$conn->query("ALTER TABLE scan_vulnerabilities MODIFY fixed_version VARCHAR(500)");
+
+    // 사용자 테이블 (RBAC)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            role ENUM('viewer', 'operator', 'admin') NOT NULL DEFAULT 'viewer',
+            email VARCHAR(100),
+            is_active TINYINT(1) DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            last_login DATETIME,
+            INDEX idx_username (username),
+            INDEX idx_role (role)
+        )
+    ");
+
+    // 감사 로그 테이블 (Audit Log)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
+            username VARCHAR(50),
+            action VARCHAR(100) NOT NULL,
+            target_type VARCHAR(50),
+            target_id VARCHAR(255),
+            details TEXT,
+            ip_address VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_user (user_id),
+            INDEX idx_action (action),
+            INDEX idx_created (created_at)
+        )
+    ");
+
+    // 기본 admin 계정 생성 (비밀번호: admin123)
+    $result = $conn->query("SELECT id FROM users WHERE username = 'admin'");
+    if ($result->num_rows === 0) {
+        $adminPass = password_hash('admin123', PASSWORD_BCRYPT);
+        $stmt = $conn->prepare("INSERT INTO users (username, password_hash, role, email) VALUES ('admin', ?, 'admin', 'admin@localhost')");
+        $stmt->bind_param("s", $adminPass);
+        $stmt->execute();
+        $stmt->close();
+    }
 }
 
 // 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk')
@@ -397,5 +442,177 @@ function getAllExceptions($conn) {
         $exceptions[] = $row;
     }
     return $exceptions;
+}
+
+// ========================================
+// 사용자 인증 및 RBAC 함수
+// ========================================
+
+// 로그인 처리
+function authenticateUser($conn, $username, $password) {
+    $stmt = $conn->prepare("SELECT id, username, password_hash, role, email, is_active FROM users WHERE username = ?");
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+    $stmt->close();
+
+    if (!$user) {
+        return ['success' => false, 'error' => '사용자를 찾을 수 없습니다.'];
+    }
+
+    if (!$user['is_active']) {
+        return ['success' => false, 'error' => '비활성화된 계정입니다.'];
+    }
+
+    if (!password_verify($password, $user['password_hash'])) {
+        return ['success' => false, 'error' => '비밀번호가 일치하지 않습니다.'];
+    }
+
+    // 마지막 로그인 시간 업데이트
+    $conn->query("UPDATE users SET last_login = NOW() WHERE id = {$user['id']}");
+
+    unset($user['password_hash']);
+    return ['success' => true, 'user' => $user];
+}
+
+// 사용자 생성 (Admin만)
+function createUser($conn, $username, $password, $role, $email = '') {
+    if (!in_array($role, ['viewer', 'operator', 'admin'])) {
+        return ['success' => false, 'error' => '유효하지 않은 권한입니다.'];
+    }
+
+    $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+    $stmt = $conn->prepare("INSERT INTO users (username, password_hash, role, email) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("ssss", $username, $passwordHash, $role, $email);
+
+    try {
+        $stmt->execute();
+        $userId = $conn->insert_id;
+        $stmt->close();
+        return ['success' => true, 'user_id' => $userId];
+    } catch (mysqli_sql_exception $e) {
+        $stmt->close();
+        if (strpos($e->getMessage(), 'Duplicate') !== false) {
+            return ['success' => false, 'error' => '이미 존재하는 사용자명입니다.'];
+        }
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// 사용자 목록 조회
+function getUsers($conn) {
+    $result = $conn->query("SELECT id, username, role, email, is_active, created_at, last_login FROM users ORDER BY created_at DESC");
+    $users = [];
+    while ($row = $result->fetch_assoc()) {
+        $users[] = $row;
+    }
+    return $users;
+}
+
+// 사용자 정보 조회
+function getUserById($conn, $userId) {
+    $stmt = $conn->prepare("SELECT id, username, role, email, is_active, created_at, last_login FROM users WHERE id = ?");
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+    $stmt->close();
+    return $user;
+}
+
+// 사용자 권한 변경
+function updateUserRole($conn, $userId, $newRole) {
+    if (!in_array($newRole, ['viewer', 'operator', 'admin'])) {
+        return ['success' => false, 'error' => '유효하지 않은 권한입니다.'];
+    }
+    $stmt = $conn->prepare("UPDATE users SET role = ? WHERE id = ?");
+    $stmt->bind_param("si", $newRole, $userId);
+    $stmt->execute();
+    $stmt->close();
+    return ['success' => true];
+}
+
+// 사용자 삭제 (비활성화)
+function deleteUser($conn, $userId) {
+    $stmt = $conn->prepare("UPDATE users SET is_active = 0 WHERE id = ?");
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $stmt->close();
+    return ['success' => true];
+}
+
+// 비밀번호 변경
+function changePassword($conn, $userId, $newPassword) {
+    $passwordHash = password_hash($newPassword, PASSWORD_BCRYPT);
+    $stmt = $conn->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+    $stmt->bind_param("si", $passwordHash, $userId);
+    $stmt->execute();
+    $stmt->close();
+    return ['success' => true];
+}
+
+// ========================================
+// 감사 로그 함수
+// ========================================
+
+// 감사 로그 기록
+function logAudit($conn, $userId, $username, $action, $targetType = null, $targetId = null, $details = null) {
+    $ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $stmt = $conn->prepare("INSERT INTO audit_logs (user_id, username, action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("issssss", $userId, $username, $action, $targetType, $targetId, $details, $ipAddress);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// 감사 로그 조회
+function getAuditLogs($conn, $limit = 100, $filters = []) {
+    $sql = "SELECT * FROM audit_logs WHERE 1=1";
+    $params = [];
+    $types = "";
+
+    if (!empty($filters['user_id'])) {
+        $sql .= " AND user_id = ?";
+        $params[] = $filters['user_id'];
+        $types .= "i";
+    }
+    if (!empty($filters['action'])) {
+        $sql .= " AND action = ?";
+        $params[] = $filters['action'];
+        $types .= "s";
+    }
+    if (!empty($filters['date_from'])) {
+        $sql .= " AND created_at >= ?";
+        $params[] = $filters['date_from'];
+        $types .= "s";
+    }
+    if (!empty($filters['date_to'])) {
+        $sql .= " AND created_at <= ?";
+        $params[] = $filters['date_to'];
+        $types .= "s";
+    }
+
+    $sql .= " ORDER BY created_at DESC LIMIT ?";
+    $params[] = $limit;
+    $types .= "i";
+
+    $stmt = $conn->prepare($sql);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $logs = [];
+    while ($row = $result->fetch_assoc()) {
+        $logs[] = $row;
+    }
+    $stmt->close();
+    return $logs;
+}
+
+// 권한 체크 헬퍼
+function hasPermission($userRole, $requiredLevel) {
+    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+    return ($levels[$userRole] ?? 0) >= ($levels[$requiredLevel] ?? 99);
 }
 

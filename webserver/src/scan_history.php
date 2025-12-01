@@ -1,5 +1,6 @@
 <?php
-require_once 'db_functions.php';
+require_once 'auth.php';
+$currentUser = requireLogin();  // Viewer 이상 접근 가능
 
 $conn = getDbConnection();
 if ($conn) {
@@ -9,8 +10,14 @@ if ($conn) {
 // API 처리
 $action = $_GET['action'] ?? '';
 
+// 삭제는 Operator 이상만
 if ($action === 'delete' && isset($_GET['id'])) {
+    if (!isOperator()) {
+        http_response_code(403);
+        exit('Permission denied');
+    }
     deleteScan($conn, (int)$_GET['id']);
+    auditLog($conn, 'DELETE_SCAN', 'scan', $_GET['id'], null);
     header('Location: scan_history.php');
     exit;
 }
@@ -68,12 +75,11 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
     <meta charset="UTF-8">
     <title>스캔 기록</title>
     <style>
+        <?= getAuthStyles() ?>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 1400px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         h1 { color: #333; }
-        .back-link { margin-bottom: 20px; }
-        .back-link a { color: #007bff; text-decoration: none; }
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); table-layout: fixed; }
         th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #ddd; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
         th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
@@ -139,12 +145,8 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
     </style>
 </head>
 <body>
+    <?= getNavMenu() ?>
     <div class="container">
-        <div class="back-link">
-            <a href="index.php">← 메인으로</a> |
-            <a href="container_scan.php">컨테이너 스캔</a> |
-            <a href="exceptions.php">🛡️ 예외 관리</a>
-        </div>
         <h1>📋 스캔 기록</h1>
 
         <div class="search-box">
