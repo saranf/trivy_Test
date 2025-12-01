@@ -101,10 +101,20 @@ $history = $conn ? getScanHistory($conn, $search, $sourceFilter) : [];
         .email-modal-buttons button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
         .btn-send { background: #6f42c1; color: white; }
         .btn-cancel { background: #6c757d; color: white; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
-        .modal-content { background: white; margin: 50px auto; padding: 20px; border-radius: 8px; max-width: 90%; max-height: 80%; overflow: auto; }
-        .modal-close { float: right; font-size: 24px; cursor: pointer; }
-        .detail-table { font-size: 12px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow: auto; }
+        .modal-content { background: white; margin: 30px auto; padding: 20px; border-radius: 8px; width: 95%; max-width: 1200px; }
+        .modal-close { float: right; font-size: 28px; cursor: pointer; color: #666; }
+        .modal-close:hover { color: #000; }
+        .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        .detail-table th, .detail-table td { padding: 10px 8px; text-align: left; border: 1px solid #ddd; word-wrap: break-word; vertical-align: top; }
+        .detail-table th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
+        .detail-table th:nth-child(1) { width: 15%; }  /* Library */
+        .detail-table th:nth-child(2) { width: 15%; }  /* Vulnerability */
+        .detail-table th:nth-child(3) { width: 10%; }  /* Severity */
+        .detail-table th:nth-child(4) { width: 15%; }  /* Installed */
+        .detail-table th:nth-child(5) { width: 15%; }  /* Fixed */
+        .detail-table th:nth-child(6) { width: 30%; }  /* Title */
+        .detail-table tbody tr:hover { background: #f5f5f5; }
         .actions-cell { white-space: nowrap; }
         #selected-count { font-size: 14px; }
     </style>

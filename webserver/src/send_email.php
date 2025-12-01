@@ -1,6 +1,6 @@
 <?php
 /**
- * 스캔 결과 이메일 발송 API
+ * 스캔 결과 이메일 발송 API (네이버 SMTP + CSV 첨부)
  */
 
 error_reporting(0);
@@ -10,11 +10,13 @@ header('Content-Type: application/json');
 
 require_once 'db_functions.php';
 
-// SMTP 설정 (환경변수 또는 기본값) - MailHog 사용
+// SMTP 설정 (네이버)
 $smtpConfig = [
-    'host' => getenv('SMTP_HOST') ?: 'mailhog',
-    'port' => (int)(getenv('SMTP_PORT') ?: 1025),
-    'from' => getenv('FROM_EMAIL') ?: 'scanner@trivy.local',
+    'host' => getenv('SMTP_HOST') ?: 'smtp.naver.com',
+    'port' => (int)(getenv('SMTP_PORT') ?: 465),
+    'user' => getenv('SMTP_USER') ?: '',
+    'pass' => getenv('SMTP_PASS') ?: '',
+    'from' => getenv('FROM_EMAIL') ?: '',
     'fromName' => getenv('FROM_NAME') ?: 'Trivy Scanner'
 ];
 
@@ -65,13 +67,45 @@ if (empty($scans)) {
     exit;
 }
 
+// CSV 생성
+$csv = generateCsv($scans);
+
 // HTML 이메일 본문 생성
 $html = generateEmailHtml($scans);
 
-// 이메일 발송
-$result = sendEmailSmtp($toEmail, $subject, $html, $smtpConfig);
+// 이메일 발송 (CSV 첨부)
+$result = sendEmailSmtp($toEmail, $subject, $html, $csv, $smtpConfig);
 
 echo json_encode($result);
+
+// CSV 생성 함수
+function generateCsv($scans) {
+    $lines = [];
+    $lines[] = "Image,Scan Date,Library,Vulnerability,Severity,Installed Version,Fixed Version";
+
+    foreach ($scans as $scan) {
+        $imageName = $scan['image_name'];
+        $scanDate = $scan['scan_date'];
+
+        if (!empty($scan['vulnerabilities'])) {
+            foreach ($scan['vulnerabilities'] as $v) {
+                $lines[] = sprintf('"%s","%s","%s","%s","%s","%s","%s"',
+                    str_replace('"', '""', $imageName),
+                    $scanDate,
+                    str_replace('"', '""', $v['library']),
+                    str_replace('"', '""', $v['vulnerability']),
+                    $v['severity'],
+                    str_replace('"', '""', $v['installed_version']),
+                    str_replace('"', '""', $v['fixed_version'] ?: '')
+                );
+            }
+        } else {
+            $lines[] = sprintf('"%s","%s","No vulnerabilities found","","","",""', $imageName, $scanDate);
+        }
+    }
+
+    return implode("\n", $lines);
+}
 
 function generateEmailHtml($scans) {
     $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -124,32 +158,69 @@ function generateEmailHtml($scans) {
     return $html;
 }
 
-function sendEmailSmtp($to, $subject, $html, $config) {
+function sendEmailSmtp($to, $subject, $html, $csv, $config) {
     $host = $config['host'];
     $port = $config['port'];
-    $from = $config['from'];
+    $user = $config['user'];
+    $pass = $config['pass'];
+    $from = $config['from'] ?: $user;
     $fromName = $config['fromName'];
 
+    if (empty($user) || empty($pass)) {
+        return ['success' => false, 'message' => 'SMTP 설정이 필요합니다. docker-compose.yml에서 SMTP_USER, SMTP_PASS를 설정하세요.'];
+    }
+
     try {
-        $socket = @fsockopen($host, $port, $errno, $errstr, 10);
+        // SSL 연결 (포트 465)
+        $context = stream_context_create([
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            ]
+        ]);
+
+        $socket = @stream_socket_client("ssl://$host:$port", $errno, $errstr, 30, STREAM_CLIENT_CONNECT, $context);
 
         if (!$socket) {
             return ['success' => false, 'message' => "SMTP 연결 실패: $errstr ($errno)"];
         }
 
-        stream_set_timeout($socket, 10);
+        stream_set_timeout($socket, 30);
 
         // 서버 응답 읽기
         $response = fgets($socket, 515);
         if (substr($response, 0, 3) != '220') {
             fclose($socket);
-            return ['success' => false, 'message' => "SMTP 서버 응답 오류"];
+            return ['success' => false, 'message' => "SMTP 서버 응답 오류: $response"];
         }
 
         // EHLO
         fputs($socket, "EHLO localhost\r\n");
         while ($line = fgets($socket, 515)) {
             if (substr($line, 3, 1) == ' ') break;
+        }
+
+        // AUTH LOGIN
+        fputs($socket, "AUTH LOGIN\r\n");
+        $authResponse = fgets($socket, 515);
+        if (substr($authResponse, 0, 3) != '334') {
+            fclose($socket);
+            return ['success' => false, 'message' => "AUTH 시작 실패: $authResponse"];
+        }
+
+        fputs($socket, base64_encode($user) . "\r\n");
+        $userResponse = fgets($socket, 515);
+        if (substr($userResponse, 0, 3) != '334') {
+            fclose($socket);
+            return ['success' => false, 'message' => "사용자명 인증 실패"];
+        }
+
+        fputs($socket, base64_encode($pass) . "\r\n");
+        $passResponse = fgets($socket, 515);
+        if (substr($passResponse, 0, 3) != '235') {
+            fclose($socket);
+            return ['success' => false, 'message' => 'SMTP 인증 실패. 아이디/비밀번호를 확인하세요.'];
         }
 
         // MAIL FROM
@@ -176,16 +247,36 @@ function sendEmailSmtp($to, $subject, $html, $config) {
             return ['success' => false, 'message' => "DATA 시작 실패"];
         }
 
-        // 이메일 헤더 및 본문
-        $message = "From: $fromName <$from>\r\n";
+        // Multipart 이메일 (HTML + CSV 첨부)
+        $boundary = md5(time());
+
+        $message = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <$from>\r\n";
         $message .= "To: $to\r\n";
         $message .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
         $message .= "MIME-Version: 1.0\r\n";
-        $message .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $message .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
         $message .= "Date: " . date('r') . "\r\n";
         $message .= "\r\n";
-        $message .= $html;
-        $message .= "\r\n.\r\n";
+
+        // HTML 본문
+        $message .= "--$boundary\r\n";
+        $message .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $message .= "Content-Transfer-Encoding: base64\r\n";
+        $message .= "\r\n";
+        $message .= chunk_split(base64_encode($html));
+        $message .= "\r\n";
+
+        // CSV 첨부파일
+        $message .= "--$boundary\r\n";
+        $message .= "Content-Type: text/csv; charset=UTF-8; name=\"trivy_scan_result.csv\"\r\n";
+        $message .= "Content-Disposition: attachment; filename=\"trivy_scan_result.csv\"\r\n";
+        $message .= "Content-Transfer-Encoding: base64\r\n";
+        $message .= "\r\n";
+        $message .= chunk_split(base64_encode("\xEF\xBB\xBF" . $csv)); // BOM for Excel
+        $message .= "\r\n";
+
+        $message .= "--$boundary--\r\n";
+        $message .= ".\r\n";
 
         fputs($socket, $message);
         $dataResponse = fgets($socket, 515);
@@ -194,9 +285,9 @@ function sendEmailSmtp($to, $subject, $html, $config) {
         fclose($socket);
 
         if (substr($dataResponse, 0, 3) == '250') {
-            return ['success' => true, 'message' => "이메일이 발송되었습니다. (MailHog에서 확인: http://localhost:8025)"];
+            return ['success' => true, 'message' => "이메일이 $to 로 발송되었습니다."];
         } else {
-            return ['success' => false, 'message' => "이메일 발송 실패"];
+            return ['success' => false, 'message' => "이메일 발송 실패: $dataResponse"];
         }
     } catch (Exception $e) {
         return ['success' => false, 'message' => '이메일 발송 중 오류: ' . $e->getMessage()];

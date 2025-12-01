@@ -24,9 +24,11 @@ services:
       - ./webserver/entrypoint.sh:/entrypoint.sh  # 시작 스크립트
     entrypoint: ["/entrypoint.sh"]
     environment:
-      - SMTP_HOST=172.17.0.1
-      - SMTP_PORT=1025
-      - FROM_EMAIL=scanner@trivy.local
+      - SMTP_HOST=smtp.naver.com
+      - SMTP_PORT=465
+      - SMTP_USER=qorwlsdk1995@naver.com
+      - SMTP_PASS=08269474tkfkd!
+      - FROM_EMAIL=qorwlsdk1997@naver.com
       - FROM_NAME=Trivy Scanner
     depends_on:
       - mysql
@@ -50,9 +52,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - API_URL=http://webserver:80/auto_scan.php
+      - API_URL=http://nginx:80/auto_scan.php
     depends_on:
-      - webserver
+      - nginx
     restart: unless-stopped
     networks:
       - app-network
