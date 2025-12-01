@@ -163,23 +163,13 @@ if (isDemoMode()) {
         <?= getAuthStyles() ?>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f5f5f5; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
         h1 { color: #333; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); table-layout: fixed; }
-        th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #ddd; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
-        th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
-        th:nth-child(1) { width: 40px; }  /* 체크박스 */
-        th:nth-child(2) { width: 50px; }  /* ID */
-        th:nth-child(3) { width: 60px; }  /* 소스 */
-        th:nth-child(4) { width: auto; }  /* 이미지 */
-        th:nth-child(5) { width: 140px; } /* 스캔일시 */
-        th:nth-child(6) { width: 60px; }  /* 총취약점 */
-        th:nth-child(7) { width: 70px; }  /* CRITICAL */
-        th:nth-child(8) { width: 60px; }  /* HIGH */
-        th:nth-child(9) { width: 70px; }  /* MEDIUM */
-        th:nth-child(10) { width: 50px; } /* LOW */
-        th:nth-child(11) { width: 160px; } /* 작업 */
-        td:nth-child(4) { text-align: left; }
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-width: 1200px; }
+        th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #ddd; vertical-align: middle; white-space: nowrap; }
+        th { background: #f8f9fa; font-weight: 600; }
+        td:nth-child(4) { text-align: left; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
         tr:hover { background: #f5f5f5; }
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; min-width: 30px; }
         .critical { background: #dc3545; }
@@ -258,6 +248,7 @@ if (isDemoMode()) {
         <?php if (empty($history)): ?>
             <div class="no-data">저장된 스캔 기록이 없습니다.</div>
         <?php else: ?>
+            <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
@@ -304,6 +295,7 @@ if (isDemoMode()) {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
         <?php endif; ?>
     </div>
 
