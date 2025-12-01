@@ -33,9 +33,11 @@ services:
       - ALERT_ON_CRITICAL=true
       - ALERT_THRESHOLD=HIGH
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      # Slack Webhook 설정
+      # Slack Webhook 설정 (여러 URL은 쉼표로 구분)
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
-      - SLACK_CHANNEL=${SLACK_CHANNEL:-#security-alerts}
+      # Google Spreadsheet 설정
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY=/var/www/html/google-credentials.json
     depends_on:
       - mysql
     networks:

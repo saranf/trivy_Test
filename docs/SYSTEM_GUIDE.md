@@ -489,3 +489,181 @@ environment:
 | `trivy_vulnerabilities_open` | **미조치 취약점 수** |
 | `trivy_misconfigurations_total` | **설정 오류 총 개수** |
 | `trivy_misconfigurations_by_severity` | **심각도별 설정 오류** |
+
+---
+
+## 🔔 Slack Webhook 알림
+
+### 다중 채널 지원
+
+여러 Slack 채널에 동시에 알림을 보낼 수 있습니다.
+
+**.env 설정:**
+```bash
+# 단일 채널
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
+
+# 다중 채널 (쉼표로 구분)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz,https://hooks.slack.com/services/aaa/bbb/ccc
+```
+
+### 알림 발송 시점
+
+| 이벤트 | 발송 조건 |
+|--------|----------|
+| 자동 스캔 | ALERT_THRESHOLD 이상 취약점 발견 시 |
+| 일괄 스캔 | Critical 또는 High 취약점 발견 시 |
+| 이메일 발송 | 스캔 리포트 이메일 발송 시 함께 |
+| Diff 리포트 | 신규 취약점 발견 시 |
+| 일일 보고서 | 보고서 생성 시 요약 발송 |
+
+### Slack 메시지 예시
+```
+🚨 *취약점 발견 알림*
+📦 nginx:alpine
+🔴 CRITICAL: 3
+🟠 HIGH: 7
+📊 총 취약점: 15
+📋 스캔 유형: 자동 스캔
+```
+
+---
+
+## 📊 일일 보안 보고서
+
+매일 전체 컨테이너를 스캔하여 Before/After 비교 보고서를 생성합니다.
+
+### 보고서 내용
+
+| 항목 | 설명 |
+|------|------|
+| 전체 요약 | 총 이미지 수, 심각도별 취약점 합계 |
+| 전일 대비 | Critical/High 변화량 |
+| 신규 취약점 | 오늘 새로 발견된 취약점 |
+| 조치된 취약점 | 어제 대비 해결된 취약점 |
+| 신규 이미지 | 새로 스캔된 이미지 |
+
+### 실행 방법
+
+**웹 UI (Admin):**
+- 메인 화면 → 📊 일일 보고서 → "보고서 생성" 클릭
+
+**CLI:**
+```bash
+docker exec trivy_test-webserver-1 php /var/www/html/daily_report.php generate
+```
+
+**Cron (자동 실행):**
+```bash
+# 매일 오전 9시에 일일 보고서 생성
+0 9 * * * docker exec trivy_test-webserver-1 php /var/www/html/daily_report.php generate
+```
+
+### Google Spreadsheet 연동
+
+보고서를 자동으로 Google Spreadsheet에 저장합니다.
+
+**설정 방법:**
+1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성
+2. Sheets API 활성화
+3. 서비스 계정 생성 및 JSON 키 다운로드
+4. 스프레드시트 생성 후 서비스 계정 이메일에 편집 권한 부여
+5. 시트에 "Daily Report" 탭 생성 (헤더: 날짜, 이미지, Critical, High, Medium, Low, 총계, Critical변화, High변화, 상태)
+
+**.env 설정:**
+```bash
+GOOGLE_SHEET_ID=1abc123def456...  # 스프레드시트 URL의 ID 부분
+```
+
+**google-credentials.json 파일:**
+```bash
+# webserver/src/ 디렉토리에 배치
+cp your-service-account-key.json webserver/src/google-credentials.json
+```
+
+---
+
+## 🚨 보안 & 에러 로그 대시보드
+
+Loki를 통해 수집된 로그 중 보안/에러 관련 로그만 필터링하여 보여주는 대시보드입니다.
+
+**Grafana URL:** `http://[서버주소]:3000/d/security-logs/`
+
+### 패널 구성
+
+| 패널 | 설명 |
+|------|------|
+| 에러 발생 추이 | 시간대별 에러 로그 발생량 그래프 |
+| 경고 발생 추이 | 시간대별 경고 로그 발생량 그래프 |
+| 로그 레벨 분포 | ERROR/WARN/INFO 비율 파이차트 |
+| Critical/Fatal 로그 | 치명적 에러 로그 실시간 목록 |
+| Error 로그 | 에러 로그 실시간 목록 |
+| 인증/권한 관련 | 로그인, 권한 거부 등 보안 로그 |
+| 보안 이벤트 | CVE, Trivy, 취약점 관련 로그 |
+| 네트워크/연결 이슈 | 연결 거부, 타임아웃 등 |
+| 데이터베이스 에러 | MySQL, SQL 관련 에러 |
+| 시간별 에러 히트맵 | 에러 발생 패턴 시각화 |
+
+### 로그 필터 키워드
+
+```
+# 에러 패턴
+error|exception|fatal|panic|critical
+
+# 인증 패턴
+auth|login|logout|permission|denied|unauthorized|forbidden
+
+# 보안 패턴
+CVE-|vulnerability|trivy|scan|security|exploit
+
+# 네트워크 패턴
+connection refused|timeout|unreachable|network
+
+# DB 패턴
+mysql|database|sql|query|deadlock
+```
+
+---
+
+## 🤖 AI 취약점 조치 추천 (Gemini API)
+
+Google Gemini AI를 활용하여 CVE 취약점에 대한 조치 방법을 추천합니다.
+
+### 설정
+
+**.env 파일:**
+```bash
+GEMINI_API_KEY=AIzaSy...your-api-key
+```
+
+**API 키 발급:** [Google AI Studio](https://aistudio.google.com/apikey)
+
+### 기능
+
+| 기능 | 설명 |
+|------|------|
+| 컨테이너 전체 분석 | 스캔 기록의 🤖AI 버튼 → 우선순위 및 종합 조치 방안 |
+| 개별 CVE 분석 | 상세 화면의 각 CVE 옆 🤖 버튼 → 해당 CVE 조치 방법 |
+| 결과 캐싱 | AI 분석 결과는 DB에 저장되어 재사용 (비용 절감) |
+
+### 무료 한도
+
+- 분당 15회 요청
+- 일 1,500회 요청
+- 분석 결과 캐싱으로 실제 API 호출 최소화
+
+---
+
+## 📁 환경변수 전체 목록
+
+| 변수명 | 설명 | 예시 |
+|--------|------|------|
+| `GEMINI_API_KEY` | Google Gemini API 키 | `AIzaSy...` |
+| `SLACK_WEBHOOK_URL` | Slack Webhook URL (쉼표로 다중) | `https://hooks.slack.com/...` |
+| `GOOGLE_SHEET_ID` | Google Spreadsheet ID | `1abc123def456...` |
+| `ALERT_EMAIL` | 알림 수신 이메일 | `admin@example.com` |
+| `ALERT_ON_CRITICAL` | Critical 알림 활성화 | `true` / `false` |
+| `ALERT_THRESHOLD` | 알림 기준 심각도 | `CRITICAL` / `HIGH` |
+| `FROM_EMAIL` | 발신자 이메일 | `scanner@example.com` |
+| `FROM_NAME` | 발신자 이름 | `Trivy Scanner` |
+| `TZ` | 타임존 | `Asia/Seoul` |

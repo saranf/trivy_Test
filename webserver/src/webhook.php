@@ -1,25 +1,38 @@
 <?php
 /**
- * 🔔 Slack Webhook 알림 기능
+ * 🔔 Slack Webhook 알림 기능 (다중 채널 지원)
  * - 스캔 결과 알림
  * - Critical 취약점 발견 시 즉시 알림
+ * - 여러 Slack 채널에 동시 발송 가능
  */
 
-// Webhook 설정
-define('SLACK_WEBHOOK_URL', getenv('SLACK_WEBHOOK_URL') ?: '');
-define('SLACK_CHANNEL', getenv('SLACK_CHANNEL') ?: '#security-alerts');
+// Webhook 설정 (쉼표로 구분된 여러 URL 지원)
+define('SLACK_WEBHOOK_URLS', getenv('SLACK_WEBHOOK_URL') ?: '');
 define('SLACK_USERNAME', getenv('SLACK_USERNAME') ?: 'Trivy Scanner');
 
 /**
- * Slack 메시지 전송
+ * 설정된 모든 Webhook URL 목록 반환
  */
-function sendSlackNotification($message, $attachments = [], $channel = null) {
-    if (empty(SLACK_WEBHOOK_URL)) {
-        return ['success' => false, 'error' => 'SLACK_WEBHOOK_URL이 설정되지 않았습니다.'];
+function getWebhookUrls() {
+    $urls = SLACK_WEBHOOK_URLS;
+    if (empty($urls)) return [];
+
+    // 쉼표 또는 줄바꿈으로 구분
+    $urlList = preg_split('/[,\n]+/', $urls);
+    return array_filter(array_map('trim', $urlList));
+}
+
+/**
+ * Slack 메시지 전송 (모든 설정된 Webhook URL에 발송)
+ */
+function sendSlackNotification($message, $attachments = []) {
+    $urls = getWebhookUrls();
+
+    if (empty($urls)) {
+        return ['success' => false, 'error' => 'SLACK_WEBHOOK_URL이 설정되지 않았습니다.', 'sent' => 0];
     }
 
     $payload = [
-        'channel' => $channel ?: SLACK_CHANNEL,
         'username' => SLACK_USERNAME,
         'icon_emoji' => ':shield:',
         'text' => $message
@@ -29,28 +42,41 @@ function sendSlackNotification($message, $attachments = [], $channel = null) {
         $payload['attachments'] = $attachments;
     }
 
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => SLACK_WEBHOOK_URL,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_TIMEOUT => 10
-    ]);
+    $results = [];
+    $successCount = 0;
+    $payloadJson = json_encode($payload);
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
+    foreach ($urls as $url) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payloadJson,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_TIMEOUT => 10
+        ]);
 
-    if ($error) {
-        return ['success' => false, 'error' => "cURL 오류: $error"];
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        $success = !$error && $httpCode === 200;
+        if ($success) $successCount++;
+
+        $results[] = [
+            'url' => substr($url, 0, 50) . '...',
+            'success' => $success,
+            'error' => $error ?: ($httpCode !== 200 ? "HTTP $httpCode" : null)
+        ];
     }
 
     return [
-        'success' => $httpCode === 200,
-        'error' => $httpCode !== 200 ? "HTTP $httpCode: $response" : null
+        'success' => $successCount > 0,
+        'sent' => $successCount,
+        'total' => count($urls),
+        'results' => $results
     ];
 }
 
@@ -146,7 +172,14 @@ function sendCustomSlackMessage($title, $text, $severity = 'info') {
  * Webhook 설정 상태 확인
  */
 function isWebhookConfigured() {
-    return !empty(SLACK_WEBHOOK_URL);
+    return !empty(getWebhookUrls());
+}
+
+/**
+ * 설정된 Webhook 개수 반환
+ */
+function getWebhookCount() {
+    return count(getWebhookUrls());
 }
 
 // API 엔드포인트 처리
@@ -187,7 +220,7 @@ if (isset($_GET['action'])) {
     if ($action === 'status') {
         echo json_encode([
             'configured' => isWebhookConfigured(),
-            'channel' => SLACK_CHANNEL
+            'webhook_count' => getWebhookCount()
         ]);
         exit;
     }

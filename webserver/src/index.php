@@ -5,6 +5,7 @@ $user = requireLogin();
 $conn = getDbConnection();
 initDatabase($conn);
 $webhookConfigured = isWebhookConfigured();
+$webhookCount = getWebhookCount();
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -129,6 +130,13 @@ $webhookConfigured = isWebhookConfigured();
                 <a href="./scheduled_scans.php" class="btn" style="background: white; color: #667eea;">스케줄 설정</a>
             </div>
 
+            <div class="card" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+                <h2 style="color: white;">📊 일일 보고서</h2>
+                <p style="color: rgba(255,255,255,0.9);">전체 컨테이너 스캔 후 Before/After 비교 보고서</p>
+                <button onclick="generateDailyReport()" id="reportBtn" class="btn" style="background: white; color: #059669;">보고서 생성</button>
+                <span id="reportStatus" style="color: white; margin-left: 10px; font-size: 12px;"></span>
+            </div>
+
             <div class="card" style="background: #1a1a2e;">
                 <h2 style="color: #ffc107;">⚙️ 관리자 메뉴</h2>
                 <p style="color: rgba(255,255,255,0.7);">사용자 관리 및 시스템 감사 로그</p>
@@ -138,14 +146,14 @@ $webhookConfigured = isWebhookConfigured();
 
             <div class="card" style="background: linear-gradient(135deg, #4a154b 0%, #611f69 100%);">
                 <h2 style="color: white;">🔔 Slack Webhook</h2>
-                <p style="color: rgba(255,255,255,0.8);">취약점 발견 시 Slack 알림 설정</p>
+                <p style="color: rgba(255,255,255,0.8);">취약점 발견 시 Slack 알림 (다중 채널 지원)</p>
                 <?php if ($webhookConfigured): ?>
-                <span style="color: #4ade80; font-weight: bold;">✅ 연결됨</span>
+                <span style="color: #4ade80; font-weight: bold;">✅ <?= $webhookCount ?>개 채널 연결됨</span>
                 <button onclick="testWebhook()" class="btn" style="background: white; color: #4a154b; margin-left: 10px;">테스트 발송</button>
                 <?php else: ?>
                 <span style="color: #fbbf24;">⚠️ 미설정</span>
                 <p style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 10px;">
-                    .env 파일에 SLACK_WEBHOOK_URL 설정 필요
+                    .env에 SLACK_WEBHOOK_URL 설정 (쉼표로 여러 URL 추가 가능)
                 </p>
                 <?php endif; ?>
             </div>
@@ -182,10 +190,34 @@ $webhookConfigured = isWebhookConfigured();
             try {
                 const res = await fetch('./webhook.php?action=test');
                 const data = await res.json();
-                alert(data.success ? '✅ 테스트 메시지가 Slack으로 발송되었습니다!' : '❌ 발송 실패: ' + data.error);
+                alert(data.success ? `✅ ${data.sent}/${data.total}개 채널에 발송 완료!` : '❌ 발송 실패: ' + data.error);
             } catch (e) {
                 alert('❌ 오류: ' + e.message);
             }
+        }
+
+        async function generateDailyReport() {
+            const btn = document.getElementById('reportBtn');
+            const status = document.getElementById('reportStatus');
+            btn.disabled = true;
+            btn.textContent = '생성 중...';
+            status.textContent = '';
+            try {
+                const res = await fetch('./daily_report.php?action=generate');
+                const data = await res.json();
+                if (data.success) {
+                    let msg = '✅ 보고서 생성 완료!';
+                    if (data.sheet_saved) msg += ' 📊 Google Sheet 저장됨';
+                    if (data.slack_sent) msg += ' 📢 Slack 발송됨';
+                    status.textContent = msg;
+                } else {
+                    status.textContent = '❌ ' + (data.error || '실패');
+                }
+            } catch (e) {
+                status.textContent = '❌ 오류: ' + e.message;
+            }
+            btn.disabled = false;
+            btn.textContent = '보고서 생성';
         }
     </script>
 </body>
