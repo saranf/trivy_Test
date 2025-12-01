@@ -123,6 +123,22 @@ $containers = getContainerSecurityInfo();
         .badge.safe { background: #dcfce7; color: #166534; }
         .badge.warn { background: #fef3c7; color: #92400e; }
         a.btn { display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; margin-top: 20px; }
+        .search-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .search-box h3 { margin: 0 0 15px; font-size: 16px; }
+        .search-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .search-row select, .search-row input { padding: 10px 15px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .search-row select { min-width: 250px; }
+        .search-row button { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .search-row button:hover { background: #2563eb; }
+        .search-row .btn-reset { background: #6b7280; }
+        .search-row .btn-reset:hover { background: #4b5563; }
+        .stats-bar { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-item { background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .stat-item .label { font-size: 12px; color: #888; }
+        .stat-item .value { font-size: 24px; font-weight: bold; }
+        .stat-item .value.good { color: #166534; }
+        .stat-item .value.bad { color: #991b1b; }
+        .card.hidden { display: none; }
     </style>
 </head>
 <body>
@@ -130,18 +146,60 @@ $containers = getContainerSecurityInfo();
     <?= getDemoBanner() ?>
     <div class="container">
         <h1>🔒 런타임 보안 감사</h1>
-        
+
         <div class="info-box">
             <h2 style="margin:0 0 10px;">③ 런타임 보안 이슈</h2>
             <p style="margin:0;">실행 중인 컨테이너의 <strong>권한 설정</strong>, <strong>네트워크 모드</strong>, <strong>마운트</strong> 등을 점검합니다.</p>
         </div>
-        
-        <div class="grid">
-            <?php foreach ($containers as $c): 
+
+        <!-- 검색/필터 영역 -->
+        <div class="search-box">
+            <h3>🔍 컨테이너 검색</h3>
+            <div class="search-row">
+                <select id="containerSelect">
+                    <option value="">-- 모든 컨테이너 보기 --</option>
+                    <?php foreach ($containers as $c): ?>
+                    <option value="<?= htmlspecialchars($c['name']) ?>"><?= htmlspecialchars($c['name']) ?> (<?= htmlspecialchars($c['image']) ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" id="searchInput" placeholder="컨테이너명 또는 이미지명 검색..." style="flex:1; min-width:200px;">
+                <button onclick="filterContainers()">🔍 검색</button>
+                <button class="btn-reset" onclick="resetFilter()">초기화</button>
+            </div>
+        </div>
+
+        <!-- 통계 -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="label">전체 컨테이너</div>
+                <div class="value"><?= count($containers) ?>개</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">보안 이슈 없음</div>
+                <div class="value good" id="safeCount">0개</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">보안 이슈 있음</div>
+                <div class="value bad" id="issueCount">0개</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">평균 보안 점수</div>
+                <div class="value" id="avgScore">0점</div>
+            </div>
+        </div>
+
+        <div class="grid" id="containerGrid">
+            <?php
+            $safeCount = 0;
+            $issueCount = 0;
+            $totalScore = 0;
+            foreach ($containers as $c):
                 $sec = calcSecurityScore($c);
                 $scoreClass = $sec['score'] >= 80 ? 'high' : ($sec['score'] >= 50 ? 'medium' : 'low');
+                $totalScore += $sec['score'];
+                if (empty($sec['issues'])) $safeCount++; else $issueCount++;
             ?>
-            <div class="card">
+            <div class="card" data-name="<?= htmlspecialchars(strtolower($c['name'])) ?>" data-image="<?= htmlspecialchars(strtolower($c['image'])) ?>">
                 <div class="card-header">
                     <h3>🐳 <?= htmlspecialchars($c['name']) ?></h3>
                     <span class="score-badge score-<?= $scoreClass ?>"><?= $sec['score'] ?>점</span>
@@ -150,7 +208,7 @@ $containers = getContainerSecurityInfo();
                     📦 <?= htmlspecialchars($c['image']) ?><br>
                     🔄 <?= htmlspecialchars($c['status']) ?>
                 </div>
-                
+
                 <?php if (empty($sec['issues'])): ?>
                 <div class="no-issues">✅ 보안 이슈 없음</div>
                 <?php else: ?>
@@ -163,9 +221,55 @@ $containers = getContainerSecurityInfo();
             </div>
             <?php endforeach; ?>
         </div>
-        
+
         <a href="security_dashboard.php" class="btn">← 보안 대시보드</a>
     </div>
+
+    <script>
+        // 초기 통계 업데이트
+        document.getElementById('safeCount').textContent = '<?= $safeCount ?>개';
+        document.getElementById('issueCount').textContent = '<?= $issueCount ?>개';
+        document.getElementById('avgScore').textContent = '<?= count($containers) > 0 ? round($totalScore / count($containers)) : 0 ?>점';
+
+        function filterContainers() {
+            const select = document.getElementById('containerSelect').value.toLowerCase();
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const cards = document.querySelectorAll('.card');
+
+            cards.forEach(card => {
+                const name = card.dataset.name;
+                const image = card.dataset.image;
+
+                let show = true;
+
+                // 드롭다운 선택 시
+                if (select && name !== select) {
+                    show = false;
+                }
+
+                // 텍스트 검색
+                if (search && !name.includes(search) && !image.includes(search)) {
+                    show = false;
+                }
+
+                card.classList.toggle('hidden', !show);
+            });
+        }
+
+        function resetFilter() {
+            document.getElementById('containerSelect').value = '';
+            document.getElementById('searchInput').value = '';
+            document.querySelectorAll('.card').forEach(card => card.classList.remove('hidden'));
+        }
+
+        // 드롭다운 변경 시 자동 필터링
+        document.getElementById('containerSelect').addEventListener('change', filterContainers);
+
+        // Enter 키로 검색
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') filterContainers();
+        });
+    </script>
 </body>
 </html>
 
