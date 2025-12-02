@@ -38,6 +38,8 @@ services:
       # Google Spreadsheet 설정
       - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID:-}
       - GOOGLE_SERVICE_ACCOUNT_KEY=/var/www/html/google-credentials.json
+      # Agent API Token
+      - AGENT_API_TOKEN=${AGENT_API_TOKEN:-default-agent-token-change-me}
     depends_on:
       - mysql
     networks:

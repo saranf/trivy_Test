@@ -316,6 +316,69 @@ function initDatabase($conn) {
     if (!columnExists($conn, 'vulnerability_exceptions', 'deleted_at')) {
         @$conn->query("ALTER TABLE vulnerability_exceptions ADD COLUMN deleted_at DATETIME DEFAULT NULL");
     }
+
+    // ========================================
+    // 에이전트 관련 테이블
+    // ========================================
+
+    // 에이전트 등록 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS agents (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            agent_id VARCHAR(64) NOT NULL UNIQUE,
+            hostname VARCHAR(255) NOT NULL,
+            ip_address VARCHAR(45),
+            os_info VARCHAR(255),
+            agent_version VARCHAR(20),
+            status ENUM('online', 'offline', 'error') DEFAULT 'offline',
+            last_heartbeat DATETIME,
+            registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            config JSON,
+            tags JSON,
+            INDEX idx_agent_id (agent_id),
+            INDEX idx_status (status),
+            INDEX idx_heartbeat (last_heartbeat)
+        )
+    ");
+
+    // 에이전트 데이터 테이블 (확장 가능한 구조)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS agent_data (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            agent_id VARCHAR(64) NOT NULL,
+            data_type VARCHAR(50) NOT NULL,
+            data_key VARCHAR(255),
+            data_value LONGTEXT,
+            collected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME,
+            INDEX idx_agent_type (agent_id, data_type),
+            INDEX idx_collected (collected_at),
+            INDEX idx_type_key (data_type, data_key)
+        )
+    ");
+
+    // 에이전트 명령 큐 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS agent_commands (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            agent_id VARCHAR(64) NOT NULL,
+            command_type VARCHAR(50) NOT NULL,
+            command_data JSON,
+            status ENUM('pending', 'sent', 'completed', 'failed') DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            sent_at DATETIME,
+            completed_at DATETIME,
+            result TEXT,
+            INDEX idx_agent_status (agent_id, status),
+            INDEX idx_created (created_at)
+        )
+    ");
+
+    // scan_history에 agent_id 컬럼 추가
+    if (!columnExists($conn, 'scan_history', 'agent_id')) {
+        @$conn->query("ALTER TABLE scan_history ADD COLUMN agent_id VARCHAR(64) DEFAULT NULL");
+        @$conn->query("ALTER TABLE scan_history ADD INDEX idx_agent (agent_id)");
+    }
 }
 
 // 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk', 'scheduled')
@@ -1086,6 +1149,7 @@ function getPermissionKeys() {
         'menu_container_scan' => ['label' => '🔍 컨테이너 스캔', 'group' => 'menu'],
         'menu_exceptions' => ['label' => '🛡️ 예외 관리', 'group' => 'menu'],
         'menu_scheduled_scans' => ['label' => '⏰ 주기적 스캔', 'group' => 'menu'],
+        'menu_agents' => ['label' => '🤖 에이전트 관리', 'group' => 'menu'],
         'menu_users' => ['label' => '👥 사용자 관리', 'group' => 'menu'],
         'menu_audit_logs' => ['label' => '📜 감사 로그', 'group' => 'menu'],
         'action_scan' => ['label' => '🔍 스캔 실행', 'group' => 'action'],
@@ -1093,6 +1157,7 @@ function getPermissionKeys() {
         'action_export_csv' => ['label' => '📥 CSV 내보내기', 'group' => 'action'],
         'action_ai_analysis' => ['label' => '🤖 AI 분석', 'group' => 'action'],
         'action_send_email' => ['label' => '📧 이메일 발송', 'group' => 'action'],
+        'action_agent_command' => ['label' => '🤖 에이전트 명령', 'group' => 'action'],
     ];
 }
 
@@ -1202,5 +1267,244 @@ function getAllRolePermissions($conn) {
         $allPermissions[$role] = getRolePermissions($conn, $role);
     }
     return $allPermissions;
+}
+
+// ========================================
+// 에이전트 관리 함수
+// ========================================
+
+/**
+ * 에이전트 등록/업데이트
+ */
+function registerAgent($conn, $agentId, $hostname, $ipAddress, $osInfo, $version, $config = null, $tags = null) {
+    $stmt = $conn->prepare("
+        INSERT INTO agents (agent_id, hostname, ip_address, os_info, agent_version, status, last_heartbeat, config, tags)
+        VALUES (?, ?, ?, ?, ?, 'online', NOW(), ?, ?)
+        ON DUPLICATE KEY UPDATE
+            hostname = VALUES(hostname),
+            ip_address = VALUES(ip_address),
+            os_info = VALUES(os_info),
+            agent_version = VALUES(agent_version),
+            status = 'online',
+            last_heartbeat = NOW(),
+            config = COALESCE(VALUES(config), config),
+            tags = COALESCE(VALUES(tags), tags)
+    ");
+    $configJson = $config ? json_encode($config) : null;
+    $tagsJson = $tags ? json_encode($tags) : null;
+    $stmt->bind_param("sssssss", $agentId, $hostname, $ipAddress, $osInfo, $version, $configJson, $tagsJson);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트 하트비트 업데이트
+ */
+function updateAgentHeartbeat($conn, $agentId) {
+    $stmt = $conn->prepare("UPDATE agents SET status = 'online', last_heartbeat = NOW() WHERE agent_id = ?");
+    $stmt->bind_param("s", $agentId);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트 목록 조회
+ */
+function getAgents($conn, $status = null) {
+    $sql = "SELECT *,
+            TIMESTAMPDIFF(SECOND, last_heartbeat, NOW()) as seconds_since_heartbeat
+            FROM agents";
+    if ($status) {
+        $sql .= " WHERE status = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("s", $status);
+    } else {
+        $sql .= " ORDER BY last_heartbeat DESC";
+        $stmt = $conn->prepare($sql);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $agents = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $agents;
+}
+
+/**
+ * 에이전트 상세 조회
+ */
+function getAgent($conn, $agentId) {
+    $stmt = $conn->prepare("SELECT * FROM agents WHERE agent_id = ?");
+    $stmt->bind_param("s", $agentId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $agent = $result->fetch_assoc();
+    $stmt->close();
+    return $agent;
+}
+
+/**
+ * 에이전트 데이터 저장 (확장 가능한 구조)
+ */
+function saveAgentData($conn, $agentId, $dataType, $dataKey, $dataValue, $expiresAt = null) {
+    $stmt = $conn->prepare("
+        INSERT INTO agent_data (agent_id, data_type, data_key, data_value, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+    ");
+    $valueJson = is_array($dataValue) || is_object($dataValue) ? json_encode($dataValue) : $dataValue;
+    $stmt->bind_param("sssss", $agentId, $dataType, $dataKey, $valueJson, $expiresAt);
+    $result = $stmt->execute();
+    $insertId = $conn->insert_id;
+    $stmt->close();
+    return $result ? $insertId : false;
+}
+
+/**
+ * 에이전트 데이터 조회
+ */
+function getAgentData($conn, $agentId, $dataType = null, $limit = 100) {
+    $sql = "SELECT * FROM agent_data WHERE agent_id = ?";
+    $params = [$agentId];
+    $types = "s";
+
+    if ($dataType) {
+        $sql .= " AND data_type = ?";
+        $params[] = $dataType;
+        $types .= "s";
+    }
+
+    $sql .= " ORDER BY collected_at DESC LIMIT ?";
+    $params[] = $limit;
+    $types .= "i";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $data;
+}
+
+/**
+ * 에이전트 명령 추가
+ */
+function addAgentCommand($conn, $agentId, $commandType, $commandData = null) {
+    $stmt = $conn->prepare("
+        INSERT INTO agent_commands (agent_id, command_type, command_data)
+        VALUES (?, ?, ?)
+    ");
+    $dataJson = $commandData ? json_encode($commandData) : null;
+    $stmt->bind_param("sss", $agentId, $commandType, $dataJson);
+    $result = $stmt->execute();
+    $insertId = $conn->insert_id;
+    $stmt->close();
+    return $result ? $insertId : false;
+}
+
+/**
+ * 대기 중인 명령 조회 (에이전트용)
+ */
+function getPendingCommands($conn, $agentId) {
+    $stmt = $conn->prepare("
+        SELECT * FROM agent_commands
+        WHERE agent_id = ? AND status = 'pending'
+        ORDER BY created_at ASC
+    ");
+    $stmt->bind_param("s", $agentId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $commands = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    // 명령 상태를 'sent'로 업데이트
+    if (!empty($commands)) {
+        $ids = array_column($commands, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $conn->prepare("UPDATE agent_commands SET status = 'sent', sent_at = NOW() WHERE id IN ($placeholders)");
+        $types = str_repeat('i', count($ids));
+        $stmt->bind_param($types, ...$ids);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    return $commands;
+}
+
+/**
+ * 명령 결과 업데이트
+ */
+function updateCommandResult($conn, $commandId, $status, $result = null) {
+    $stmt = $conn->prepare("
+        UPDATE agent_commands
+        SET status = ?, completed_at = NOW(), result = ?
+        WHERE id = ?
+    ");
+    $stmt->bind_param("ssi", $status, $result, $commandId);
+    $res = $stmt->execute();
+    $stmt->close();
+    return $res;
+}
+
+/**
+ * 오래된 에이전트 오프라인 처리 (5분 이상 하트비트 없음)
+ */
+function markOfflineAgents($conn, $timeoutSeconds = 300) {
+    $stmt = $conn->prepare("
+        UPDATE agents
+        SET status = 'offline'
+        WHERE status = 'online'
+        AND last_heartbeat < DATE_SUB(NOW(), INTERVAL ? SECOND)
+    ");
+    $stmt->bind_param("i", $timeoutSeconds);
+    $stmt->execute();
+    $affected = $stmt->affected_rows;
+    $stmt->close();
+    return $affected;
+}
+
+/**
+ * 스캔 결과 저장 (에이전트용 확장)
+ */
+function saveScanResultFromAgent($conn, $agentId, $imageName, $trivyData, $scanSource = 'agent') {
+    // 기존 saveScanResult 호출
+    $scanId = saveScanResult($conn, $imageName, $trivyData, $scanSource);
+
+    // agent_id 업데이트
+    if ($scanId && $agentId) {
+        $stmt = $conn->prepare("UPDATE scan_history SET agent_id = ? WHERE id = ?");
+        $stmt->bind_param("si", $agentId, $scanId);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    return $scanId;
+}
+
+/**
+ * 에이전트별 스캔 기록 조회
+ */
+function getScanHistoryByAgent($conn, $agentId = null, $limit = 50) {
+    $sql = "SELECT sh.*, a.hostname as agent_hostname
+            FROM scan_history sh
+            LEFT JOIN agents a ON sh.agent_id = a.agent_id";
+
+    if ($agentId) {
+        $sql .= " WHERE sh.agent_id = ?";
+        $sql .= " ORDER BY sh.scan_date DESC LIMIT ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("si", $agentId, $limit);
+    } else {
+        $sql .= " ORDER BY sh.scan_date DESC LIMIT ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $limit);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $history = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $history;
 }
 

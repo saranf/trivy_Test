@@ -168,6 +168,9 @@ function getNavMenu() {
     if (hasPermission('menu_scheduled_scans')) {
         $menu .= '<a href="scheduled_scans.php">⏰ 주기적 스캔</a>';
     }
+    if (hasPermission('menu_agents') || isAdmin()) {
+        $menu .= '<a href="agents.php">🤖 에이전트</a>';
+    }
     if (hasPermission('menu_users') || isAdmin()) {
         $menu .= '<a href="users.php">👥 사용자 관리</a>';
     }
