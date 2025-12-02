@@ -379,6 +379,87 @@ function initDatabase($conn) {
         @$conn->query("ALTER TABLE scan_history ADD COLUMN agent_id VARCHAR(64) DEFAULT NULL");
         @$conn->query("ALTER TABLE scan_history ADD INDEX idx_agent (agent_id)");
     }
+
+    // ========================================
+    // 자산 관리 테이블
+    // ========================================
+
+    // 자산 그룹 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS asset_groups (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL UNIQUE,
+            display_name VARCHAR(200) NOT NULL,
+            description TEXT,
+            color VARCHAR(7) DEFAULT '#3498db',
+            icon VARCHAR(50) DEFAULT '📁',
+            parent_id INT DEFAULT NULL,
+            sort_order INT DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_parent (parent_id),
+            INDEX idx_name (name)
+        )
+    ");
+
+    // 자산 태그 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS asset_tags (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(50) NOT NULL UNIQUE,
+            display_name VARCHAR(100) NOT NULL,
+            color VARCHAR(7) DEFAULT '#9b59b6',
+            category ENUM('environment', 'team', 'service', 'priority', 'custom') DEFAULT 'custom',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_category (category)
+        )
+    ");
+
+    // 에이전트-그룹 매핑 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS agent_group_mapping (
+            agent_id VARCHAR(64) NOT NULL,
+            group_id INT NOT NULL,
+            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (agent_id, group_id),
+            INDEX idx_group (group_id)
+        )
+    ");
+
+    // 에이전트-태그 매핑 테이블
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS agent_tag_mapping (
+            agent_id VARCHAR(64) NOT NULL,
+            tag_id INT NOT NULL,
+            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (agent_id, tag_id),
+            INDEX idx_tag (tag_id)
+        )
+    ");
+
+    // 기본 자산 그룹 생성
+    $conn->query("
+        INSERT IGNORE INTO asset_groups (name, display_name, description, color, icon, sort_order) VALUES
+        ('production', '🔴 운영', '운영 환경 서버', '#e74c3c', '🔴', 1),
+        ('staging', '🟡 스테이징', '스테이징 환경', '#f39c12', '🟡', 2),
+        ('development', '🟢 개발', '개발 환경', '#27ae60', '🟢', 3),
+        ('testing', '🔵 테스트', '테스트 환경', '#3498db', '🔵', 4)
+    ");
+
+    // 기본 태그 생성
+    $conn->query("
+        INSERT IGNORE INTO asset_tags (name, display_name, color, category) VALUES
+        ('prod', 'Production', '#e74c3c', 'environment'),
+        ('staging', 'Staging', '#f39c12', 'environment'),
+        ('dev', 'Development', '#27ae60', 'environment'),
+        ('test', 'Testing', '#3498db', 'environment'),
+        ('backend', 'Backend', '#9b59b6', 'team'),
+        ('frontend', 'Frontend', '#1abc9c', 'team'),
+        ('infra', 'Infrastructure', '#34495e', 'team'),
+        ('critical', 'Critical', '#c0392b', 'priority'),
+        ('high', 'High', '#e67e22', 'priority'),
+        ('normal', 'Normal', '#2980b9', 'priority'),
+        ('low', 'Low', '#7f8c8d', 'priority')
+    ");
 }
 
 // 스캔 결과 저장 (scan_source: 'manual', 'auto', 'bulk', 'scheduled')
@@ -1506,5 +1587,252 @@ function getScanHistoryByAgent($conn, $agentId = null, $limit = 50) {
     $history = $result->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     return $history;
+}
+
+// ========================================
+// 자산 관리 함수
+// ========================================
+
+/**
+ * 자산 그룹 목록 조회
+ */
+function getAssetGroups($conn, $parentId = null) {
+    if ($parentId === null) {
+        $stmt = $conn->prepare("SELECT * FROM asset_groups WHERE parent_id IS NULL ORDER BY sort_order, name");
+        $stmt->execute();
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM asset_groups WHERE parent_id = ? ORDER BY sort_order, name");
+        $stmt->bind_param("i", $parentId);
+        $stmt->execute();
+    }
+    $result = $stmt->get_result();
+    $groups = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $groups;
+}
+
+/**
+ * 자산 그룹 생성
+ */
+function createAssetGroup($conn, $name, $displayName, $description = '', $color = '#3498db', $icon = '📁', $parentId = null) {
+    $stmt = $conn->prepare("INSERT INTO asset_groups (name, display_name, description, color, icon, parent_id) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssssi", $name, $displayName, $description, $color, $icon, $parentId);
+    $result = $stmt->execute();
+    $id = $stmt->insert_id;
+    $stmt->close();
+    return $result ? $id : false;
+}
+
+/**
+ * 자산 태그 목록 조회
+ */
+function getAssetTags($conn, $category = null) {
+    if ($category === null) {
+        $stmt = $conn->prepare("SELECT * FROM asset_tags ORDER BY category, name");
+        $stmt->execute();
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM asset_tags WHERE category = ? ORDER BY name");
+        $stmt->bind_param("s", $category);
+        $stmt->execute();
+    }
+    $result = $stmt->get_result();
+    $tags = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $tags;
+}
+
+/**
+ * 자산 태그 생성
+ */
+function createAssetTag($conn, $name, $displayName, $color = '#9b59b6', $category = 'custom') {
+    $stmt = $conn->prepare("INSERT INTO asset_tags (name, display_name, color, category) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("ssss", $name, $displayName, $color, $category);
+    $result = $stmt->execute();
+    $id = $stmt->insert_id;
+    $stmt->close();
+    return $result ? $id : false;
+}
+
+/**
+ * 에이전트에 그룹 할당
+ */
+function assignAgentToGroup($conn, $agentId, $groupId) {
+    $stmt = $conn->prepare("INSERT IGNORE INTO agent_group_mapping (agent_id, group_id) VALUES (?, ?)");
+    $stmt->bind_param("si", $agentId, $groupId);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트에서 그룹 제거
+ */
+function removeAgentFromGroup($conn, $agentId, $groupId = null) {
+    if ($groupId === null) {
+        $stmt = $conn->prepare("DELETE FROM agent_group_mapping WHERE agent_id = ?");
+        $stmt->bind_param("s", $agentId);
+    } else {
+        $stmt = $conn->prepare("DELETE FROM agent_group_mapping WHERE agent_id = ? AND group_id = ?");
+        $stmt->bind_param("si", $agentId, $groupId);
+    }
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트에 태그 할당
+ */
+function assignAgentTag($conn, $agentId, $tagId) {
+    $stmt = $conn->prepare("INSERT IGNORE INTO agent_tag_mapping (agent_id, tag_id) VALUES (?, ?)");
+    $stmt->bind_param("si", $agentId, $tagId);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트에서 태그 제거
+ */
+function removeAgentTag($conn, $agentId, $tagId = null) {
+    if ($tagId === null) {
+        $stmt = $conn->prepare("DELETE FROM agent_tag_mapping WHERE agent_id = ?");
+        $stmt->bind_param("s", $agentId);
+    } else {
+        $stmt = $conn->prepare("DELETE FROM agent_tag_mapping WHERE agent_id = ? AND tag_id = ?");
+        $stmt->bind_param("si", $agentId, $tagId);
+    }
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 에이전트의 그룹 목록 조회
+ */
+function getAgentGroups($conn, $agentId) {
+    $stmt = $conn->prepare("
+        SELECT ag.* FROM asset_groups ag
+        JOIN agent_group_mapping agm ON ag.id = agm.group_id
+        WHERE agm.agent_id = ?
+        ORDER BY ag.sort_order, ag.name
+    ");
+    $stmt->bind_param("s", $agentId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $groups = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $groups;
+}
+
+/**
+ * 에이전트의 태그 목록 조회
+ */
+function getAgentTags($conn, $agentId) {
+    $stmt = $conn->prepare("
+        SELECT at.* FROM asset_tags at
+        JOIN agent_tag_mapping atm ON at.id = atm.tag_id
+        WHERE atm.agent_id = ?
+        ORDER BY at.category, at.name
+    ");
+    $stmt->bind_param("s", $agentId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $tags = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $tags;
+}
+
+/**
+ * 그룹 또는 태그로 에이전트 필터링
+ */
+function getAgentsByFilter($conn, $groupId = null, $tagIds = [], $status = null) {
+    $sql = "
+        SELECT DISTINCT a.* FROM agents a
+        LEFT JOIN agent_group_mapping agm ON a.agent_id = agm.agent_id
+        LEFT JOIN agent_tag_mapping atm ON a.agent_id = atm.agent_id
+        WHERE 1=1
+    ";
+    $params = [];
+    $types = "";
+
+    if ($groupId !== null) {
+        $sql .= " AND agm.group_id = ?";
+        $params[] = $groupId;
+        $types .= "i";
+    }
+
+    if (!empty($tagIds)) {
+        $placeholders = implode(',', array_fill(0, count($tagIds), '?'));
+        $sql .= " AND atm.tag_id IN ($placeholders)";
+        foreach ($tagIds as $tagId) {
+            $params[] = $tagId;
+            $types .= "i";
+        }
+    }
+
+    if ($status !== null) {
+        $sql .= " AND a.status = ?";
+        $params[] = $status;
+        $types .= "s";
+    }
+
+    $sql .= " ORDER BY a.hostname";
+
+    $stmt = $conn->prepare($sql);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $agents = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $agents;
+}
+
+/**
+ * 그룹별 취약점 통계 조회
+ */
+function getVulnStatsByGroup($conn, $groupId) {
+    $stmt = $conn->prepare("
+        SELECT
+            SUM(sh.critical_count) as total_critical,
+            SUM(sh.high_count) as total_high,
+            SUM(sh.medium_count) as total_medium,
+            SUM(sh.low_count) as total_low,
+            COUNT(DISTINCT sh.id) as total_scans,
+            COUNT(DISTINCT sh.agent_id) as agent_count
+        FROM scan_history sh
+        JOIN agent_group_mapping agm ON sh.agent_id = agm.agent_id
+        WHERE agm.group_id = ? AND sh.scan_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+    ");
+    $stmt->bind_param("i", $groupId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $result;
+}
+
+/**
+ * 태그별 취약점 통계 조회
+ */
+function getVulnStatsByTag($conn, $tagId) {
+    $stmt = $conn->prepare("
+        SELECT
+            SUM(sh.critical_count) as total_critical,
+            SUM(sh.high_count) as total_high,
+            SUM(sh.medium_count) as total_medium,
+            SUM(sh.low_count) as total_low,
+            COUNT(DISTINCT sh.id) as total_scans,
+            COUNT(DISTINCT sh.agent_id) as agent_count
+        FROM scan_history sh
+        JOIN agent_tag_mapping atm ON sh.agent_id = atm.agent_id
+        WHERE atm.tag_id = ? AND sh.scan_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+    ");
+    $stmt->bind_param("i", $tagId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $result;
 }
 

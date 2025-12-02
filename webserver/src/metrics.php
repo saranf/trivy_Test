@@ -228,7 +228,106 @@ try {
     echo "# HELP trivy_misconfigurations_by_severity Misconfigurations by severity\n";
     echo "# TYPE trivy_misconfigurations_by_severity gauge\n";
     echo "trivy_misconfigurations_by_severity{severity=\"critical\"} " . ($mcTotal['critical'] ?? 0) . "\n";
-    echo "trivy_misconfigurations_by_severity{severity=\"high\"} " . ($mcTotal['high'] ?? 0) . "\n";
+    echo "trivy_misconfigurations_by_severity{severity=\"high\"} " . ($mcTotal['high'] ?? 0) . "\n\n";
+
+    // ========================================
+    // 에이전트 및 자산 그룹 통계
+    // ========================================
+
+    // 에이전트 테이블 확인
+    $agentTableCheck = $conn->query("SHOW TABLES LIKE 'agents'");
+    if ($agentTableCheck && $agentTableCheck->num_rows > 0) {
+        // 에이전트 상태 통계
+        $result = $conn->query("SELECT status, COUNT(*) as cnt FROM agents GROUP BY status");
+        $agentStats = ['online' => 0, 'offline' => 0, 'error' => 0];
+        while ($row = $result->fetch_assoc()) {
+            $agentStats[$row['status']] = $row['cnt'];
+        }
+
+        echo "# HELP trivy_agents_total Total registered agents by status\n";
+        echo "# TYPE trivy_agents_total gauge\n";
+        echo "trivy_agents_total{status=\"online\"} " . $agentStats['online'] . "\n";
+        echo "trivy_agents_total{status=\"offline\"} " . $agentStats['offline'] . "\n";
+        echo "trivy_agents_total{status=\"error\"} " . $agentStats['error'] . "\n\n";
+
+        // 자산 그룹별 취약점 통계
+        $groupTableCheck = $conn->query("SHOW TABLES LIKE 'asset_groups'");
+        if ($groupTableCheck && $groupTableCheck->num_rows > 0) {
+            $result = $conn->query("
+                SELECT
+                    ag.name as group_name,
+                    ag.display_name,
+                    COUNT(DISTINCT agm.agent_id) as agent_count,
+                    COALESCE(SUM(sh.critical_count), 0) as critical,
+                    COALESCE(SUM(sh.high_count), 0) as high,
+                    COALESCE(SUM(sh.medium_count), 0) as medium,
+                    COALESCE(SUM(sh.low_count), 0) as low
+                FROM asset_groups ag
+                LEFT JOIN agent_group_mapping agm ON ag.id = agm.group_id
+                LEFT JOIN scan_history sh ON agm.agent_id = sh.agent_id
+                    AND sh.scan_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                GROUP BY ag.id, ag.name, ag.display_name
+            ");
+
+            echo "# HELP trivy_asset_group_agents Number of agents per asset group\n";
+            echo "# TYPE trivy_asset_group_agents gauge\n";
+            while ($row = $result->fetch_assoc()) {
+                $groupName = $row['group_name'];
+                echo "trivy_asset_group_agents{group=\"{$groupName}\"} " . $row['agent_count'] . "\n";
+            }
+            echo "\n";
+
+            // 다시 쿼리 실행 (취약점 통계용)
+            $result = $conn->query("
+                SELECT
+                    ag.name as group_name,
+                    COALESCE(SUM(sh.critical_count), 0) as critical,
+                    COALESCE(SUM(sh.high_count), 0) as high
+                FROM asset_groups ag
+                LEFT JOIN agent_group_mapping agm ON ag.id = agm.group_id
+                LEFT JOIN scan_history sh ON agm.agent_id = sh.agent_id
+                    AND sh.scan_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                GROUP BY ag.id, ag.name
+            ");
+
+            echo "# HELP trivy_asset_group_vulnerabilities Vulnerabilities by asset group (last 24h)\n";
+            echo "# TYPE trivy_asset_group_vulnerabilities gauge\n";
+            while ($row = $result->fetch_assoc()) {
+                $groupName = $row['group_name'];
+                echo "trivy_asset_group_vulnerabilities{group=\"{$groupName}\",severity=\"critical\"} " . $row['critical'] . "\n";
+                echo "trivy_asset_group_vulnerabilities{group=\"{$groupName}\",severity=\"high\"} " . $row['high'] . "\n";
+            }
+            echo "\n";
+        }
+
+        // 태그별 취약점 통계
+        $tagTableCheck = $conn->query("SHOW TABLES LIKE 'asset_tags'");
+        if ($tagTableCheck && $tagTableCheck->num_rows > 0) {
+            $result = $conn->query("
+                SELECT
+                    at.name as tag_name,
+                    at.category,
+                    COUNT(DISTINCT atm.agent_id) as agent_count,
+                    COALESCE(SUM(sh.critical_count), 0) as critical,
+                    COALESCE(SUM(sh.high_count), 0) as high
+                FROM asset_tags at
+                LEFT JOIN agent_tag_mapping atm ON at.id = atm.tag_id
+                LEFT JOIN scan_history sh ON atm.agent_id = sh.agent_id
+                    AND sh.scan_date > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                GROUP BY at.id, at.name, at.category
+            ");
+
+            echo "# HELP trivy_asset_tag_vulnerabilities Vulnerabilities by asset tag (last 24h)\n";
+            echo "# TYPE trivy_asset_tag_vulnerabilities gauge\n";
+            while ($row = $result->fetch_assoc()) {
+                $tagName = $row['tag_name'];
+                $category = $row['category'];
+                echo "trivy_asset_tag_vulnerabilities{tag=\"{$tagName}\",category=\"{$category}\",severity=\"critical\"} " . $row['critical'] . "\n";
+                echo "trivy_asset_tag_vulnerabilities{tag=\"{$tagName}\",category=\"{$category}\",severity=\"high\"} " . $row['high'] . "\n";
+            }
+            echo "\n";
+        }
+    }
 
 } catch (Exception $e) {
     echo "# Error: " . $e->getMessage() . "\n";

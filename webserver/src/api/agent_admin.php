@@ -73,29 +73,35 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'agent_id 필요']);
             exit;
         }
-        
+
         $agent = getAgent($conn, $agentId);
         if (!$agent) {
             echo json_encode(['success' => false, 'error' => '에이전트를 찾을 수 없습니다.']);
             exit;
         }
-        
+
+        // 그룹/태그 정보
+        $groups = getAgentGroups($conn, $agentId);
+        $tags = getAgentTags($conn, $agentId);
+
         // 최근 데이터
         $recentData = getAgentData($conn, $agentId, null, 50);
-        
+
         // 최근 스캔
         $recentScans = getScanHistoryByAgent($conn, $agentId, 20);
-        
+
         // 최근 명령
         $stmt = $conn->prepare("SELECT * FROM agent_commands WHERE agent_id = ? ORDER BY created_at DESC LIMIT 20");
         $stmt->bind_param("s", $agentId);
         $stmt->execute();
         $commands = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
-        
+
         echo json_encode([
             'success' => true,
             'agent' => $agent,
+            'groups' => $groups,
+            'tags' => $tags,
             'recent_data' => $recentData,
             'recent_scans' => $recentScans,
             'recent_commands' => $commands
@@ -152,9 +158,208 @@ switch ($action) {
     case 'scans':
         $agentId = $_GET['agent_id'] ?? null;
         $limit = min((int)($_GET['limit'] ?? 50), 200);
-        
+
         $scans = getScanHistoryByAgent($conn, $agentId, $limit);
         echo json_encode(['success' => true, 'scans' => $scans]);
+        break;
+
+    // ========================================
+    // 자산 그룹/태그 관리
+    // ========================================
+
+    // 그룹 추가 또는 에이전트에 그룹 할당
+    case 'add_group':
+        // 에이전트에 그룹 할당하는 경우
+        if (!empty($_POST['agent_id']) && !empty($_POST['group_id'])) {
+            $agentId = $_POST['agent_id'];
+            $groupId = (int)$_POST['group_id'];
+
+            if (assignAgentToGroup($conn, $agentId, $groupId)) {
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false, 'error' => '그룹 할당 실패']);
+            }
+        }
+        // 새 그룹 생성하는 경우
+        else {
+            $name = $_POST['name'] ?? '';
+            $displayName = $_POST['display_name'] ?? '';
+            $description = $_POST['description'] ?? '';
+            $color = $_POST['color'] ?? '#3498db';
+            $icon = $_POST['icon'] ?? '📁';
+
+            if (empty($name) || empty($displayName)) {
+                echo json_encode(['success' => false, 'error' => 'name과 display_name 필요']);
+                exit;
+            }
+
+            $groupId = createAssetGroup($conn, $name, $displayName, $description, $color, $icon);
+            if ($groupId) {
+                auditLog($conn, 'CREATE_ASSET_GROUP', 'asset_group', $groupId, "그룹 생성: {$displayName}");
+                echo json_encode(['success' => true, 'group_id' => $groupId]);
+            } else {
+                echo json_encode(['success' => false, 'error' => '그룹 생성 실패 (중복 이름?)']);
+            }
+        }
+        break;
+
+    // 태그 추가 또는 에이전트에 태그 할당
+    case 'add_tag':
+        // 에이전트에 태그 할당하는 경우
+        if (!empty($_POST['agent_id']) && !empty($_POST['tag_id'])) {
+            $agentId = $_POST['agent_id'];
+            $tagId = (int)$_POST['tag_id'];
+
+            if (assignAgentTag($conn, $agentId, $tagId)) {
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false, 'error' => '태그 할당 실패']);
+            }
+        }
+        // 새 태그 생성하는 경우
+        else {
+            $name = $_POST['name'] ?? '';
+            $displayName = $_POST['display_name'] ?? '';
+            $color = $_POST['color'] ?? '#9b59b6';
+            $category = $_POST['category'] ?? 'custom';
+
+            if (empty($name) || empty($displayName)) {
+                echo json_encode(['success' => false, 'error' => 'name과 display_name 필요']);
+                exit;
+            }
+
+            $tagId = createAssetTag($conn, $name, $displayName, $color, $category);
+            if ($tagId) {
+                auditLog($conn, 'CREATE_ASSET_TAG', 'asset_tag', $tagId, "태그 생성: {$displayName}");
+                echo json_encode(['success' => true, 'tag_id' => $tagId]);
+            } else {
+                echo json_encode(['success' => false, 'error' => '태그 생성 실패 (중복 이름?)']);
+            }
+        }
+        break;
+
+    // 에이전트에서 그룹 제거
+    case 'remove_group':
+        $agentId = $_POST['agent_id'] ?? '';
+        $groupId = (int)($_POST['group_id'] ?? 0);
+
+        if (empty($agentId) || !$groupId) {
+            echo json_encode(['success' => false, 'error' => 'agent_id와 group_id 필요']);
+            exit;
+        }
+
+        if (removeAgentFromGroup($conn, $agentId, $groupId)) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => '그룹 제거 실패']);
+        }
+        break;
+
+    // 에이전트에서 태그 제거
+    case 'remove_tag':
+        $agentId = $_POST['agent_id'] ?? '';
+        $tagId = (int)($_POST['tag_id'] ?? 0);
+
+        if (empty($agentId) || !$tagId) {
+            echo json_encode(['success' => false, 'error' => 'agent_id와 tag_id 필요']);
+            exit;
+        }
+
+        if (removeAgentTag($conn, $agentId, $tagId)) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => '태그 제거 실패']);
+        }
+        break;
+
+    // 그룹 목록
+    case 'groups':
+        $groups = getAssetGroups($conn);
+        echo json_encode(['success' => true, 'groups' => $groups]);
+        break;
+
+    // 태그 목록
+    case 'tags':
+        $category = $_GET['category'] ?? null;
+        $tags = getAssetTags($conn, $category);
+        echo json_encode(['success' => true, 'tags' => $tags]);
+        break;
+
+    // 그룹 삭제 (Admin만)
+    case 'delete_group':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+        $groupId = (int)($_POST['group_id'] ?? 0);
+        if (!$groupId) {
+            echo json_encode(['success' => false, 'error' => 'group_id 필요']);
+            exit;
+        }
+        // 매핑 먼저 삭제
+        $conn->query("DELETE FROM agent_group_mapping WHERE group_id = {$groupId}");
+        // 그룹 삭제
+        $stmt = $conn->prepare("DELETE FROM asset_groups WHERE id = ?");
+        $stmt->bind_param("i", $groupId);
+        if ($stmt->execute()) {
+            auditLog($conn, 'DELETE_ASSET_GROUP', 'asset_group', $groupId, "그룹 삭제");
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => '삭제 실패']);
+        }
+        $stmt->close();
+        break;
+
+    // 태그 삭제 (Admin만)
+    case 'delete_tag':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+        $tagId = (int)($_POST['tag_id'] ?? 0);
+        if (!$tagId) {
+            echo json_encode(['success' => false, 'error' => 'tag_id 필요']);
+            exit;
+        }
+        // 매핑 먼저 삭제
+        $conn->query("DELETE FROM agent_tag_mapping WHERE tag_id = {$tagId}");
+        // 태그 삭제
+        $stmt = $conn->prepare("DELETE FROM asset_tags WHERE id = ?");
+        $stmt->bind_param("i", $tagId);
+        if ($stmt->execute()) {
+            auditLog($conn, 'DELETE_ASSET_TAG', 'asset_tag', $tagId, "태그 삭제");
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => '삭제 실패']);
+        }
+        $stmt->close();
+        break;
+
+    // 그룹 수정 (Admin만)
+    case 'update_group':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+        $groupId = (int)($_POST['group_id'] ?? 0);
+        $displayName = $_POST['display_name'] ?? '';
+        $description = $_POST['description'] ?? '';
+        $color = $_POST['color'] ?? '#3498db';
+        $icon = $_POST['icon'] ?? '📁';
+
+        if (!$groupId) {
+            echo json_encode(['success' => false, 'error' => 'group_id 필요']);
+            exit;
+        }
+
+        $stmt = $conn->prepare("UPDATE asset_groups SET display_name=?, description=?, color=?, icon=? WHERE id=?");
+        $stmt->bind_param("ssssi", $displayName, $description, $color, $icon, $groupId);
+        if ($stmt->execute()) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => '수정 실패']);
+        }
+        $stmt->close();
         break;
 
     default:

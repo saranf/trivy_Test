@@ -76,6 +76,60 @@
       },
       {
         "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(trivy_asset_group_agents, group)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Asset Group",
+        "multi": true,
+        "name": "asset_group",
+        "options": [],
+        "query": {
+          "query": "label_values(trivy_asset_group_agents, group)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(trivy_asset_tag_vulnerabilities, tag)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Asset Tag",
+        "multi": true,
+        "name": "asset_tag",
+        "options": [],
+        "query": {
+          "query": "label_values(trivy_asset_tag_vulnerabilities, tag)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
           "selected": false,
           "text": "",
           "value": ""

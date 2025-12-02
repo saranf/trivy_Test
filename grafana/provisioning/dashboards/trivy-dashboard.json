@@ -23,6 +23,60 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
+        "definition": "label_values(trivy_asset_group_agents, group)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Asset Group",
+        "multi": true,
+        "name": "asset_group",
+        "options": [],
+        "query": {
+          "query": "label_values(trivy_asset_group_agents, group)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(trivy_asset_tag_vulnerabilities, tag)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Asset Tag",
+        "multi": true,
+        "name": "asset_tag",
+        "options": [],
+        "query": {
+          "query": "label_values(trivy_asset_tag_vulnerabilities, tag)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "definition": "label_values(container_memory_usage_bytes{name!=\"\"}, name)",
         "hide": 0,
         "includeAll": true,
@@ -333,6 +387,89 @@
             "refId": "A",
             "datasource": {"type": "loki", "uid": "loki"}
           }
+        ]
+      },
+      {
+        "id": 20,
+        "title": "Agents by Status",
+        "type": "piechart",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 0, "y": 24, "w": 6, "h": 6},
+        "targets": [
+          {"expr": "trivy_agents_total", "legendFormat": "{{status}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "pieType": "pie"
+        }
+      },
+      {
+        "id": 21,
+        "title": "Vulnerabilities by Asset Group (24h)",
+        "type": "barchart",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 6, "y": 24, "w": 9, "h": 6},
+        "targets": [
+          {"expr": "trivy_asset_group_vulnerabilities{group=~\"$asset_group\",severity=\"critical\"}", "legendFormat": "{{group}} - Critical", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+          {"expr": "trivy_asset_group_vulnerabilities{group=~\"$asset_group\",severity=\"high\"}", "legendFormat": "{{group}} - High", "refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {
+          "legend": {"displayMode": "list", "placement": "bottom"},
+          "orientation": "horizontal"
+        }
+      },
+      {
+        "id": 22,
+        "title": "Agents per Asset Group",
+        "type": "stat",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 15, "y": 24, "w": 9, "h": 6},
+        "targets": [
+          {"expr": "trivy_asset_group_agents{group=~\"$asset_group\"}", "legendFormat": "{{group}}", "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"steps": [{"color": "blue", "value": null}]}
+          }
+        },
+        "options": {
+          "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "none"
+        }
+      },
+      {
+        "id": 23,
+        "title": "Vulnerabilities by Tag (24h)",
+        "type": "table",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"x": 0, "y": 30, "w": 24, "h": 6},
+        "targets": [
+          {"expr": "trivy_asset_tag_vulnerabilities{tag=~\"$asset_tag\"}", "format": "table", "instant": true, "refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 10}]}
+          },
+          "overrides": [
+            {"matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "displayName", "value": "Count"}]}
+          ]
+        },
+        "transformations": [
+          {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true}, "renameByName": {"tag": "Tag", "category": "Category", "severity": "Severity"}}}
         ]
       }
     ]
