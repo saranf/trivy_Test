@@ -211,6 +211,88 @@ function initDatabase($conn) {
         $stmt->close();
     }
 
+    // 권한 설정 테이블 (Role별/User별 메뉴 및 기능 권한)
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS permissions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            target_type ENUM('role', 'user') NOT NULL,
+            target_id VARCHAR(50) NOT NULL,
+            permission_key VARCHAR(100) NOT NULL,
+            is_allowed TINYINT(1) DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_permission (target_type, target_id, permission_key),
+            INDEX idx_target (target_type, target_id)
+        )
+    ");
+
+    // 기본 Role 권한 설정 (초기값)
+    $defaultPermissions = [
+        // viewer 권한
+        ['role', 'viewer', 'menu_scan_history', 1],
+        ['role', 'viewer', 'menu_container_scan', 0],
+        ['role', 'viewer', 'menu_exceptions', 0],
+        ['role', 'viewer', 'menu_scheduled_scans', 0],
+        ['role', 'viewer', 'menu_users', 0],
+        ['role', 'viewer', 'menu_audit_logs', 0],
+        ['role', 'viewer', 'action_scan', 0],
+        ['role', 'viewer', 'action_delete', 0],
+        ['role', 'viewer', 'action_export_csv', 1],
+        ['role', 'viewer', 'action_ai_analysis', 1],
+        ['role', 'viewer', 'action_send_email', 0],
+        // operator 권한
+        ['role', 'operator', 'menu_scan_history', 1],
+        ['role', 'operator', 'menu_container_scan', 1],
+        ['role', 'operator', 'menu_exceptions', 1],
+        ['role', 'operator', 'menu_scheduled_scans', 0],
+        ['role', 'operator', 'menu_users', 0],
+        ['role', 'operator', 'menu_audit_logs', 0],
+        ['role', 'operator', 'action_scan', 1],
+        ['role', 'operator', 'action_delete', 1],
+        ['role', 'operator', 'action_export_csv', 1],
+        ['role', 'operator', 'action_ai_analysis', 1],
+        ['role', 'operator', 'action_send_email', 1],
+        // admin 권한 (모두 허용)
+        ['role', 'admin', 'menu_scan_history', 1],
+        ['role', 'admin', 'menu_container_scan', 1],
+        ['role', 'admin', 'menu_exceptions', 1],
+        ['role', 'admin', 'menu_scheduled_scans', 1],
+        ['role', 'admin', 'menu_users', 1],
+        ['role', 'admin', 'menu_audit_logs', 1],
+        ['role', 'admin', 'action_scan', 1],
+        ['role', 'admin', 'action_delete', 1],
+        ['role', 'admin', 'action_export_csv', 1],
+        ['role', 'admin', 'action_ai_analysis', 1],
+        ['role', 'admin', 'action_send_email', 1],
+        // demo 권한 (operator와 유사하지만 실제 작업 제한)
+        ['role', 'demo', 'menu_scan_history', 1],
+        ['role', 'demo', 'menu_container_scan', 1],
+        ['role', 'demo', 'menu_exceptions', 1],
+        ['role', 'demo', 'menu_scheduled_scans', 1],
+        ['role', 'demo', 'menu_users', 0],
+        ['role', 'demo', 'menu_audit_logs', 1],
+        ['role', 'demo', 'action_scan', 1],
+        ['role', 'demo', 'action_delete', 0],
+        ['role', 'demo', 'action_export_csv', 1],
+        ['role', 'demo', 'action_ai_analysis', 1],
+        ['role', 'demo', 'action_send_email', 0],
+    ];
+
+    // 기본 권한이 없으면 추가
+    $checkStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM permissions WHERE target_type = 'role'");
+    $checkStmt->execute();
+    $checkResult = $checkStmt->get_result()->fetch_assoc();
+    $checkStmt->close();
+
+    if ($checkResult['cnt'] == 0) {
+        $insertStmt = $conn->prepare("INSERT IGNORE INTO permissions (target_type, target_id, permission_key, is_allowed) VALUES (?, ?, ?, ?)");
+        foreach ($defaultPermissions as $perm) {
+            $insertStmt->bind_param("sssi", $perm[0], $perm[1], $perm[2], $perm[3]);
+            $insertStmt->execute();
+        }
+        $insertStmt->close();
+    }
+
     // 주기적 스캔 설정 테이블
     $conn->query("
         CREATE TABLE IF NOT EXISTS scheduled_scans (
@@ -989,5 +1071,136 @@ function markScanComplete($conn, $id) {
         $stmt->execute();
         $stmt->close();
     }
+}
+
+// ========================================
+// 권한 관리 함수 (Permission Management)
+// ========================================
+
+/**
+ * 권한 키 목록 정의
+ */
+function getPermissionKeys() {
+    return [
+        'menu_scan_history' => ['label' => '📋 스캔 기록', 'group' => 'menu'],
+        'menu_container_scan' => ['label' => '🔍 컨테이너 스캔', 'group' => 'menu'],
+        'menu_exceptions' => ['label' => '🛡️ 예외 관리', 'group' => 'menu'],
+        'menu_scheduled_scans' => ['label' => '⏰ 주기적 스캔', 'group' => 'menu'],
+        'menu_users' => ['label' => '👥 사용자 관리', 'group' => 'menu'],
+        'menu_audit_logs' => ['label' => '📜 감사 로그', 'group' => 'menu'],
+        'action_scan' => ['label' => '🔍 스캔 실행', 'group' => 'action'],
+        'action_delete' => ['label' => '🗑️ 삭제', 'group' => 'action'],
+        'action_export_csv' => ['label' => '📥 CSV 내보내기', 'group' => 'action'],
+        'action_ai_analysis' => ['label' => '🤖 AI 분석', 'group' => 'action'],
+        'action_send_email' => ['label' => '📧 이메일 발송', 'group' => 'action'],
+    ];
+}
+
+/**
+ * Role별 권한 조회
+ */
+function getRolePermissions($conn, $role) {
+    $stmt = $conn->prepare("SELECT permission_key, is_allowed FROM permissions WHERE target_type = 'role' AND target_id = ?");
+    $stmt->bind_param("s", $role);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $permissions = [];
+    while ($row = $result->fetch_assoc()) {
+        $permissions[$row['permission_key']] = (bool)$row['is_allowed'];
+    }
+    $stmt->close();
+    return $permissions;
+}
+
+/**
+ * User별 권한 조회 (Role 권한 + User 오버라이드)
+ */
+function getUserPermissions($conn, $userId, $userRole) {
+    // 기본 Role 권한
+    $permissions = getRolePermissions($conn, $userRole);
+
+    // User별 오버라이드
+    $stmt = $conn->prepare("SELECT permission_key, is_allowed FROM permissions WHERE target_type = 'user' AND target_id = ?");
+    $userIdStr = (string)$userId;
+    $stmt->bind_param("s", $userIdStr);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $permissions[$row['permission_key']] = (bool)$row['is_allowed'];
+    }
+    $stmt->close();
+    return $permissions;
+}
+
+/**
+ * Role 권한 업데이트
+ */
+function updateRolePermission($conn, $role, $permissionKey, $isAllowed) {
+    $stmt = $conn->prepare("INSERT INTO permissions (target_type, target_id, permission_key, is_allowed)
+                            VALUES ('role', ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE is_allowed = VALUES(is_allowed), updated_at = NOW()");
+    $stmt->bind_param("ssi", $role, $permissionKey, $isAllowed);
+    $stmt->execute();
+    $stmt->close();
+    return true;
+}
+
+/**
+ * User별 권한 오버라이드 설정
+ */
+function updateUserPermission($conn, $userId, $permissionKey, $isAllowed) {
+    $userIdStr = (string)$userId;
+    $stmt = $conn->prepare("INSERT INTO permissions (target_type, target_id, permission_key, is_allowed)
+                            VALUES ('user', ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE is_allowed = VALUES(is_allowed), updated_at = NOW()");
+    $stmt->bind_param("ssi", $userIdStr, $permissionKey, $isAllowed);
+    $stmt->execute();
+    $stmt->close();
+    return true;
+}
+
+/**
+ * User별 권한 오버라이드 삭제 (Role 기본값으로 복원)
+ */
+function resetUserPermission($conn, $userId, $permissionKey = null) {
+    $userIdStr = (string)$userId;
+    if ($permissionKey) {
+        $stmt = $conn->prepare("DELETE FROM permissions WHERE target_type = 'user' AND target_id = ? AND permission_key = ?");
+        $stmt->bind_param("ss", $userIdStr, $permissionKey);
+    } else {
+        $stmt = $conn->prepare("DELETE FROM permissions WHERE target_type = 'user' AND target_id = ?");
+        $stmt->bind_param("s", $userIdStr);
+    }
+    $stmt->execute();
+    $stmt->close();
+    return true;
+}
+
+/**
+ * 특정 권한 확인 (세션 사용자 기준)
+ */
+function checkPermission($conn, $permissionKey) {
+    if (!isset($_SESSION['user'])) return false;
+
+    $userId = $_SESSION['user']['id'];
+    $userRole = $_SESSION['user']['role'];
+
+    // admin은 모든 권한 허용
+    if ($userRole === 'admin') return true;
+
+    $permissions = getUserPermissions($conn, $userId, $userRole);
+    return $permissions[$permissionKey] ?? false;
+}
+
+/**
+ * 모든 Role의 권한 조회
+ */
+function getAllRolePermissions($conn) {
+    $roles = ['viewer', 'demo', 'operator', 'admin'];
+    $allPermissions = [];
+    foreach ($roles as $role) {
+        $allPermissions[$role] = getRolePermissions($conn, $role);
+    }
+    return $allPermissions;
 }
 

@@ -54,6 +54,45 @@ function isViewer() {
     return isset($_SESSION['user']);
 }
 
+/**
+ * 특정 권한 확인 (DB 기반)
+ * @param string $permissionKey 권한 키 (예: menu_scan_history, action_scan)
+ * @return bool
+ */
+function hasPermission($permissionKey) {
+    if (!isset($_SESSION['user'])) return false;
+
+    $userRole = $_SESSION['user']['role'] ?? '';
+
+    // admin은 모든 권한 허용
+    if ($userRole === 'admin') return true;
+
+    // 캐시된 권한 확인
+    if (isset($_SESSION['permissions'][$permissionKey])) {
+        return $_SESSION['permissions'][$permissionKey];
+    }
+
+    // DB에서 권한 조회
+    $conn = getDbConnection();
+    if (!$conn) return false;
+
+    $userId = $_SESSION['user']['id'];
+    $permissions = getUserPermissions($conn, $userId, $userRole);
+    $conn->close();
+
+    // 세션에 캐시
+    $_SESSION['permissions'] = $permissions;
+
+    return $permissions[$permissionKey] ?? false;
+}
+
+/**
+ * 권한 캐시 초기화 (권한 변경 시 호출)
+ */
+function clearPermissionCache() {
+    unset($_SESSION['permissions']);
+}
+
 // 데모 모드 확인 (면접관용 - 읽기 전용, 민감정보 마스킹)
 function isDemoMode() {
     return ($_SESSION['user']['role'] ?? '') === 'demo';
@@ -108,23 +147,31 @@ function auditLog($conn, $action, $targetType = null, $targetId = null, $details
     }
 }
 
-// 권한별 네비게이션 메뉴 생성
+// 권한별 네비게이션 메뉴 생성 (DB 권한 기반)
 function getNavMenu() {
     $user = getCurrentUser();
     if (!$user) return '';
 
     $menu = '<div class="nav-menu">';
     $menu .= '<a href="index.php">🏠 메인</a>';
-    $menu .= '<a href="scan_history.php">📋 스캔 기록</a>';
 
-    if (isOperator()) {
+    // 권한 기반 메뉴 표시
+    if (hasPermission('menu_scan_history')) {
+        $menu .= '<a href="scan_history.php">📋 스캔 기록</a>';
+    }
+    if (hasPermission('menu_container_scan')) {
         $menu .= '<a href="container_scan.php">🔍 컨테이너 스캔</a>';
+    }
+    if (hasPermission('menu_exceptions')) {
         $menu .= '<a href="exceptions.php">🛡️ 예외 관리</a>';
     }
-
-    if (isAdmin()) {
+    if (hasPermission('menu_scheduled_scans')) {
         $menu .= '<a href="scheduled_scans.php">⏰ 주기적 스캔</a>';
+    }
+    if (hasPermission('menu_users') || isAdmin()) {
         $menu .= '<a href="users.php">👥 사용자 관리</a>';
+    }
+    if (hasPermission('menu_audit_logs')) {
         $menu .= '<a href="audit_logs.php">📜 감사 로그</a>';
     }
 
