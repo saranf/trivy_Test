@@ -946,9 +946,9 @@ function getAuditLogs($conn, $limit = 100, $filters = []) {
     return $logs;
 }
 
-// 권한 체크 헬퍼
-function hasPermission($userRole, $requiredLevel) {
-    $levels = ['viewer' => 1, 'operator' => 2, 'admin' => 3];
+// 권한 레벨 체크 헬퍼 (Role 레벨 비교용)
+function hasRoleLevel($userRole, $requiredLevel) {
+    $levels = ['viewer' => 1, 'demo' => 2, 'operator' => 2, 'admin' => 3];
     return ($levels[$userRole] ?? 0) >= ($levels[$requiredLevel] ?? 99);
 }
 
