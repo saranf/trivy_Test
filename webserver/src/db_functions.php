@@ -1841,6 +1841,18 @@ function getVulnStatsByTag($conn, $tagId) {
 // ========================================
 
 /**
+ * 에이전트 사용 여부 확인
+ */
+function isAgentEnabled() {
+    $url = getenv('TRIVY_AGENT_URL');
+    // 환경변수가 없거나 'disabled'면 사용 안함
+    if (!$url || $url === 'disabled' || $url === 'false') {
+        return false;
+    }
+    return true;
+}
+
+/**
  * 에이전트 API URL 가져오기
  */
 function getAgentUrl() {
@@ -1900,31 +1912,106 @@ function callAgentAPI($endpoint, $data = [], $timeout = 300) {
 }
 
 /**
- * 에이전트로 이미지 스캔
+ * 에이전트로 이미지 스캔 (폴백: 직접 실행)
  * @param string $image 이미지명
  * @param string $severity 심각도 (예: HIGH,CRITICAL)
  * @param string $securityChecks 보안 체크 (예: vuln,config)
  * @return array Trivy 스캔 결과
  */
 function scanImageViaAgent($image, $severity = 'HIGH,CRITICAL', $securityChecks = 'vuln,config') {
-    return callAgentAPI('/scan/image', [
-        'image' => $image,
-        'severity' => $severity,
-        'security_checks' => $securityChecks
-    ]);
+    // 에이전트 사용 시 API 호출
+    if (isAgentEnabled()) {
+        $result = callAgentAPI('/scan/image', [
+            'image' => $image,
+            'severity' => $severity,
+            'security_checks' => $securityChecks
+        ]);
+
+        // 에이전트 성공 시 반환
+        if ($result['success']) {
+            return $result;
+        }
+        // 에이전트 실패 시 폴백으로 직접 실행
+        error_log("Agent scan failed, falling back to direct execution: " . ($result['error'] ?? 'unknown'));
+    }
+
+    // 직접 Trivy 실행 (폴백)
+    return scanImageDirectly($image, $severity, $securityChecks);
 }
 
 /**
- * 에이전트로 SBOM 생성
+ * Trivy 직접 실행 (에이전트 없이)
+ */
+function scanImageDirectly($image, $severity = 'HIGH,CRITICAL', $securityChecks = 'vuln,config') {
+    $safeImage = escapeshellarg($image);
+    $safeSeverity = escapeshellarg($severity);
+
+    $command = "trivy image --security-checks $securityChecks --severity $safeSeverity --format json $safeImage 2>/dev/null";
+    exec($command, $output, $resultCode);
+
+    $jsonOutput = implode("\n", $output);
+
+    // JSON 시작 위치 찾기
+    $jsonStart = strpos($jsonOutput, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $jsonOutput = substr($jsonOutput, $jsonStart);
+    }
+
+    $data = json_decode($jsonOutput, true);
+
+    if ($data === null) {
+        return ['success' => false, 'error' => 'Failed to parse Trivy output', 'result' => null];
+    }
+
+    return ['success' => true, 'result' => $data];
+}
+
+/**
+ * 에이전트로 SBOM 생성 (폴백: 직접 실행)
  * @param string $image 이미지명
  * @param string $format SBOM 포맷 (cyclonedx, spdx, spdx-json)
  * @return array SBOM 결과
  */
 function generateSbomViaAgent($image, $format = 'cyclonedx') {
-    return callAgentAPI('/scan/sbom', [
-        'image' => $image,
-        'format' => $format
-    ]);
+    // 에이전트 사용 시 API 호출
+    if (isAgentEnabled()) {
+        $result = callAgentAPI('/scan/sbom', [
+            'image' => $image,
+            'format' => $format
+        ]);
+
+        if ($result['success']) {
+            return $result;
+        }
+        error_log("Agent SBOM failed, falling back to direct execution: " . ($result['error'] ?? 'unknown'));
+    }
+
+    // 직접 Trivy 실행 (폴백)
+    return generateSbomDirectly($image, $format);
+}
+
+/**
+ * SBOM 직접 생성 (에이전트 없이)
+ */
+function generateSbomDirectly($image, $format = 'cyclonedx') {
+    $safeImage = escapeshellarg($image);
+
+    $command = "trivy image --format $format $safeImage 2>/dev/null";
+    exec($command, $output, $resultCode);
+
+    $result = implode("\n", $output);
+
+    // JSON 시작 위치 찾기
+    $jsonStart = strpos($result, '{');
+    if ($jsonStart !== false && $jsonStart > 0) {
+        $result = substr($result, $jsonStart);
+    }
+
+    if (empty($result)) {
+        return ['success' => false, 'error' => 'SBOM generation failed', 'sbom' => null];
+    }
+
+    return ['success' => true, 'sbom' => $result];
 }
 
 /**

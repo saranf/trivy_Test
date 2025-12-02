@@ -38,12 +38,11 @@ services:
       # Google Spreadsheet 설정
       - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID:-}
       - GOOGLE_SERVICE_ACCOUNT_KEY=/var/www/html/google-credentials.json
-      # Agent 설정
+      # Agent 설정 (TRIVY_AGENT_URL=disabled 로 설정하면 직접 실행 모드)
       - AGENT_API_TOKEN=${AGENT_API_TOKEN:-default-agent-token-change-me}
-      - TRIVY_AGENT_URL=http://trivy-agent:8888
+      - TRIVY_AGENT_URL=${TRIVY_AGENT_URL:-http://trivy-agent:8888}
     depends_on:
       - mysql
-      - trivy-agent
     networks:
       - app-network
 
