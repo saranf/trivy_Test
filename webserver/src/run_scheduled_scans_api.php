@@ -26,31 +26,28 @@ $results = [];
 
 foreach ($dueScans as $scan) {
     $imageName = $scan['image_name'];
-    
-    // Trivy 스캔 실행 (v0.29.2 호환)
-    $safeTarget = escapeshellarg($imageName);
-    $command = "trivy image --security-checks vuln,config --severity HIGH,CRITICAL --format json $safeTarget 2>/dev/null";
 
-    exec($command, $output, $resultCode);
+    // 에이전트 API 호출
+    $result = scanImageViaAgent($imageName, 'HIGH,CRITICAL', 'vuln,config');
 
-    $jsonOutput = implode("\n", $output);
-    $output = []; // 다음 스캔을 위해 초기화
-
-    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
-    $jsonStart = strpos($jsonOutput, '{');
-    if ($jsonStart !== false && $jsonStart > 0) {
-        $jsonOutput = substr($jsonOutput, $jsonStart);
-    }
-
-    $data = json_decode($jsonOutput, true);
-
-    if ($data === null) {
-        // 스캔 실패해도 다음 실행 시간 업데이트
+    if (!$result['success']) {
         markScanComplete($conn, $scan['id']);
         $results[] = [
             'image' => $imageName,
             'status' => 'error',
-            'message' => 'Failed to parse Trivy output'
+            'message' => 'Agent scan failed: ' . ($result['error'] ?? 'Unknown error')
+        ];
+        continue;
+    }
+
+    $data = $result['result'] ?? null;
+
+    if ($data === null) {
+        markScanComplete($conn, $scan['id']);
+        $results[] = [
+            'image' => $imageName,
+            'status' => 'error',
+            'message' => 'No data returned from agent'
         ];
         continue;
     }

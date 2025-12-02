@@ -23,28 +23,20 @@ function getRunningContainers() {
     return $containers;
 }
 
-// Trivy 스캔 실행 및 Markdown 변환 (v0.29.2 호환)
+// Trivy 스캔 실행 및 Markdown 변환 (에이전트 API 사용)
 function scanContainer($imageOrId, $severity = 'HIGH,CRITICAL', $scanSecrets = true) {
-    $safeTarget = escapeshellarg($imageOrId);
-    $safeSeverity = escapeshellarg($severity);
-
-    // Trivy v0.29.2: --security-checks 사용 (신버전의 --scanners 대신)
+    // 에이전트 API 호출
     $securityChecks = $scanSecrets ? 'vuln,config,secret' : 'vuln,config';
-    $command = "trivy image --security-checks $securityChecks --severity $safeSeverity --format json $safeTarget 2>/dev/null";
-    exec($command, $output, $result_code);
+    $result = scanImageViaAgent($imageOrId, $severity, $securityChecks);
 
-    $jsonOutput = implode("\n", $output);
-
-    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
-    $jsonStart = strpos($jsonOutput, '{');
-    if ($jsonStart !== false && $jsonStart > 0) {
-        $jsonOutput = substr($jsonOutput, $jsonStart);
+    if (!$result['success']) {
+        return "## ❌ 스캔 오류\n\n**에이전트 오류**: " . ($result['error'] ?? 'Unknown error') . "\n\n에이전트 상태를 확인하세요.";
     }
 
-    $data = json_decode($jsonOutput, true);
+    $data = $result['result'] ?? null;
 
     if ($data === null) {
-        return "## ❌ 스캔 오류\n\n```\n" . $jsonOutput . "\n```";
+        return "## ❌ 스캔 오류\n\n결과 데이터가 없습니다.";
     }
 
     return convertToMarkdown($data, $imageOrId);
@@ -280,27 +272,19 @@ if ($action === 'save') {
     exit;
 }
 
-// 스캔 + 데이터 반환 함수 (v0.29.2 호환)
+// 스캔 + 데이터 반환 함수 (에이전트 API 사용)
 function scanContainerWithData($imageOrId, $severity = 'HIGH,CRITICAL') {
-    $safeTarget = escapeshellarg($imageOrId);
-    $safeSeverity = escapeshellarg($severity);
+    // 에이전트 API 호출
+    $result = scanImageViaAgent($imageOrId, $severity, 'vuln,config');
 
-    // Trivy v0.29.2 호환
-    $command = "trivy image --severity $safeSeverity --format json $safeTarget 2>/dev/null";
-    exec($command, $output, $result_code);
-
-    $jsonOutput = implode("\n", $output);
-
-    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
-    $jsonStart = strpos($jsonOutput, '{');
-    if ($jsonStart !== false && $jsonStart > 0) {
-        $jsonOutput = substr($jsonOutput, $jsonStart);
+    if (!$result['success']) {
+        return ['markdown' => "## ❌ 스캔 오류\n\n**에이전트 오류**: " . ($result['error'] ?? 'Unknown error'), 'data' => null];
     }
 
-    $data = json_decode($jsonOutput, true);
+    $data = $result['result'] ?? null;
 
     if ($data === null) {
-        return ['markdown' => "## ❌ 스캔 오류\n\n```\n" . $jsonOutput . "\n```", 'data' => null];
+        return ['markdown' => "## ❌ 스캔 오류\n\n결과 데이터가 없습니다.", 'data' => null];
     }
 
     return ['markdown' => convertToMarkdown($data, $imageOrId), 'data' => $data];

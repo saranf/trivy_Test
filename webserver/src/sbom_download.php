@@ -73,42 +73,33 @@ $trivyFormat = match($format) {
 // 파일 확장자
 $extension = ($format === 'spdx-json' || $format === 'spdx') ? 'spdx.json' : 'cdx.json';
 
-// 이미지명 sanitize
-$safeImage = escapeshellarg($imageName);
+// 에이전트 API 호출로 SBOM 생성
+$result = generateSbomViaAgent($imageName, $trivyFormat);
 
-// Trivy SBOM 생성 명령어 (v0.29.2 호환 - INFO 로그 제거)
-$command = "trivy image --format $trivyFormat $safeImage 2>/dev/null";
-
-// 실행
-$output = [];
-$returnCode = 0;
-exec($command, $output, $returnCode);
-$result = implode("\n", $output);
-
-// JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
-$jsonStart = strpos($result, '{');
-if ($jsonStart !== false && $jsonStart > 0) {
-    $result = substr($result, $jsonStart);
-}
-
-if (empty($result)) {
+if (!$result['success']) {
     http_response_code(500);
     echo "SBOM 생성 실패\n";
     echo "이미지: " . htmlspecialchars($imageName) . "\n";
-    echo "Exit Code: $returnCode\n\n";
+    echo "오류: " . ($result['error'] ?? 'Unknown error') . "\n\n";
     echo "\n가능한 원인:\n";
     echo "- 이미지가 로컬에 없음 (docker pull 필요)\n";
     echo "- 이미지명이 잘못됨\n";
-    echo "- Trivy 스캔 중 오류 발생\n";
+    echo "- 에이전트 연결 오류\n";
     exit;
 }
 
-$output = $result;
+$output = $result['sbom'] ?? '';
+
+if (empty($output)) {
+    http_response_code(500);
+    echo "SBOM 생성 실패: 빈 결과\n";
+    echo "이미지: " . htmlspecialchars($imageName) . "\n";
+    exit;
+}
 
 // JSON 유효성 검사
 $json = json_decode($output);
 if (json_last_error() !== JSON_ERROR_NONE) {
-    // 오류 메시지를 로그에 남기고 사용자에게 상세 정보 제공
     error_log("SBOM JSON parse error for $imageName: " . json_last_error_msg());
     http_response_code(500);
     echo "SBOM 생성 중 오류가 발생했습니다.\n";
@@ -117,7 +108,7 @@ if (json_last_error() !== JSON_ERROR_NONE) {
     echo "\n가능한 원인:\n";
     echo "- 이미지가 로컬에 없어서 pull이 필요\n";
     echo "- 이미지 이름이 잘못됨\n";
-    echo "- Trivy 스캔 중 오류 발생\n";
+    echo "- 에이전트 오류\n";
     exit;
 }
 

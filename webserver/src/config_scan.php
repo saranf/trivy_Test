@@ -58,7 +58,7 @@ function scanConfig($path, $severity = 'HIGH,CRITICAL') {
 function scanCompliance($target, $scanType = 'security-checks') {
     $safeTarget = escapeshellarg($target);
 
-    // 스캔 유형에 따른 명령어 구성 (v0.29.2 호환)
+    // 스캔 유형에 따른 security_checks 구성
     switch ($scanType) {
         case 'secret-scan':
             $securityChecks = 'secret';
@@ -72,20 +72,24 @@ function scanCompliance($target, $scanType = 'security-checks') {
             break;
     }
 
-    // Trivy 스캔 실행 (v0.29.2: --security-checks 사용)
-    // 2>/dev/null로 INFO 로그 제거, JSON만 캡처
-    $command = "trivy image --security-checks $securityChecks --format json $safeTarget 2>/dev/null";
-    exec($command, $output, $resultCode);
+    // 에이전트 API 호출
+    $result = callAgentAPI('/scan/image', [
+        'image' => $target,
+        'severity' => 'LOW,MEDIUM,HIGH,CRITICAL',
+        'security_checks' => $securityChecks
+    ]);
 
-    $jsonOutput = implode("\n", $output);
-
-    // JSON 시작 위치 찾기 (INFO 로그가 섞여있을 경우 대비)
-    $jsonStart = strpos($jsonOutput, '{');
-    if ($jsonStart !== false && $jsonStart > 0) {
-        $jsonOutput = substr($jsonOutput, $jsonStart);
+    if (!$result['success']) {
+        return [
+            'success' => false,
+            'data' => null,
+            'raw' => $result['error'] ?? 'Agent error',
+            'target' => $target,
+            'scanType' => $scanType
+        ];
     }
 
-    $data = json_decode($jsonOutput, true);
+    $data = $result['result'] ?? null;
 
     // 스캔 성공 여부 판단: Results가 있거나, Metadata가 있으면 성공
     $success = $data !== null && (isset($data['Results']) || isset($data['Metadata']));
@@ -93,7 +97,7 @@ function scanCompliance($target, $scanType = 'security-checks') {
     return [
         'success' => $success,
         'data' => $data,
-        'raw' => $jsonOutput,
+        'raw' => json_encode($data),
         'target' => $target,
         'scanType' => $scanType
     ];

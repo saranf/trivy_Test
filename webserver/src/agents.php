@@ -238,6 +238,9 @@ $conn->close();
                 <?php if ($filterGroup || $filterTag || $filterStatus): ?>
                 <a href="agents.php" class="btn btn-warning">필터 초기화</a>
                 <?php endif; ?>
+                <?php if (isAdmin() && count($agents) > 0): ?>
+                <button class="btn btn-danger" onclick="cleanupAgents()" style="margin-left:auto;">🗑️ 중복 정리</button>
+                <?php endif; ?>
             </div>
 
             <?php if (empty($agents) && !$filterGroup && !$filterTag && !$filterStatus): ?>
@@ -305,6 +308,9 @@ docker run -d --name trivy-agent \
                     <button class="btn btn-primary" onclick="showAgentDetail('<?= htmlspecialchars($agent['agent_id']) ?>')">📋 상세</button>
                     <button class="btn btn-success" onclick="sendCommand('<?= htmlspecialchars($agent['agent_id']) ?>', 'scan_all')">🔍 스캔</button>
                     <button class="btn btn-warning" onclick="showTagModal('<?= htmlspecialchars($agent['agent_id']) ?>')">🏷️ 태그</button>
+                    <?php if (isAdmin()): ?>
+                    <button class="btn btn-danger" onclick="deleteAgent('<?= htmlspecialchars($agent['agent_id']) ?>')" title="삭제">🗑️</button>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endforeach; ?>
@@ -668,6 +674,46 @@ docker run -d --name trivy-agent \
                     alert('오류: ' + data.error);
                 }
             });
+    }
+
+    // 에이전트 삭제
+    function deleteAgent(agentId) {
+        if (!confirm('정말 이 에이전트를 삭제하시겠습니까?\n\n' + agentId)) return;
+
+        const formData = new FormData();
+        formData.append('action', 'delete_agent');
+        formData.append('agent_id', agentId);
+
+        fetch('api/agent_admin.php', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            })
+            .catch(e => alert('요청 실패: ' + e.message));
+    }
+
+    // 중복 에이전트 정리
+    function cleanupAgents() {
+        if (!confirm('hostname이 중복된 에이전트 중 오래된 것을 삭제합니다.\n계속하시겠습니까?')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'cleanup_agents');
+
+        fetch('api/agent_admin.php', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            })
+            .catch(e => alert('요청 실패: ' + e.message));
     }
     </script>
 </body>

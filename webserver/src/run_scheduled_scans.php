@@ -39,21 +39,20 @@ foreach ($dueScans as $scan) {
     $imageName = $scan['image_name'];
     echo "\n--- Scanning: {$imageName} ---\n";
 
-    // Trivy 스캔 실행
-    $safeTarget = escapeshellarg($imageName);
-    $command = "trivy image --no-progress --severity HIGH,CRITICAL --format json $safeTarget 2>&1";
-    
-    echo "Command: {$command}\n";
-    exec($command, $output, $resultCode);
-    
-    $jsonOutput = implode("\n", $output);
-    $data = json_decode($jsonOutput, true);
+    // 에이전트 API 호출
+    echo "Calling agent API for scan...\n";
+    $result = scanImageViaAgent($imageName, 'HIGH,CRITICAL', 'vuln,config');
+
+    if (!$result['success']) {
+        echo "ERROR: Agent scan failed for {$imageName}: " . ($result['error'] ?? 'Unknown error') . "\n";
+        markScanComplete($conn, $scan['id']);
+        continue;
+    }
+
+    $data = $result['result'] ?? null;
 
     if ($data === null) {
-        echo "ERROR: Failed to parse Trivy output for {$imageName}\n";
-        echo "Output: " . substr($jsonOutput, 0, 500) . "\n";
-        
-        // 다음 실행 시간 업데이트 (실패해도)
+        echo "ERROR: No data returned for {$imageName}\n";
         markScanComplete($conn, $scan['id']);
         continue;
     }

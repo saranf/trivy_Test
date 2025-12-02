@@ -1836,3 +1836,125 @@ function getVulnStatsByTag($conn, $tagId) {
     return $result;
 }
 
+// ========================================
+// 🤖 Trivy Agent API 호출 함수
+// ========================================
+
+/**
+ * 에이전트 API URL 가져오기
+ */
+function getAgentUrl() {
+    return getenv('TRIVY_AGENT_URL') ?: 'http://trivy-agent:8888';
+}
+
+/**
+ * 에이전트 API 토큰 가져오기
+ */
+function getAgentToken() {
+    return getenv('AGENT_API_TOKEN') ?: 'default-agent-token-change-me';
+}
+
+/**
+ * 에이전트 API 호출
+ * @param string $endpoint API 엔드포인트 (예: /scan/image)
+ * @param array $data POST 데이터
+ * @param int $timeout 타임아웃 (초)
+ * @return array ['success' => bool, 'data' => mixed, 'error' => string]
+ */
+function callAgentAPI($endpoint, $data = [], $timeout = 300) {
+    $url = getAgentUrl() . $endpoint;
+    $token = getAgentToken();
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($data),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'X-Agent-Token: ' . $token
+        ],
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_CONNECTTIMEOUT => 10
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($error) {
+        return ['success' => false, 'error' => 'cURL error: ' . $error, 'data' => null];
+    }
+
+    if ($httpCode !== 200) {
+        return ['success' => false, 'error' => "HTTP $httpCode", 'data' => null];
+    }
+
+    $decoded = json_decode($response, true);
+    if ($decoded === null) {
+        return ['success' => false, 'error' => 'Invalid JSON response', 'data' => $response];
+    }
+
+    return $decoded;
+}
+
+/**
+ * 에이전트로 이미지 스캔
+ * @param string $image 이미지명
+ * @param string $severity 심각도 (예: HIGH,CRITICAL)
+ * @param string $securityChecks 보안 체크 (예: vuln,config)
+ * @return array Trivy 스캔 결과
+ */
+function scanImageViaAgent($image, $severity = 'HIGH,CRITICAL', $securityChecks = 'vuln,config') {
+    return callAgentAPI('/scan/image', [
+        'image' => $image,
+        'severity' => $severity,
+        'security_checks' => $securityChecks
+    ]);
+}
+
+/**
+ * 에이전트로 SBOM 생성
+ * @param string $image 이미지명
+ * @param string $format SBOM 포맷 (cyclonedx, spdx, spdx-json)
+ * @return array SBOM 결과
+ */
+function generateSbomViaAgent($image, $format = 'cyclonedx') {
+    return callAgentAPI('/scan/sbom', [
+        'image' => $image,
+        'format' => $format
+    ]);
+}
+
+/**
+ * 에이전트로 설정 스캔
+ * @param string $image 이미지명
+ * @return array 설정 스캔 결과
+ */
+function scanConfigViaAgent($image) {
+    return callAgentAPI('/scan/config', [
+        'image' => $image,
+        'security_checks' => 'config'
+    ]);
+}
+
+/**
+ * 에이전트 헬스체크
+ * @return bool 정상 여부
+ */
+function checkAgentHealth() {
+    $url = getAgentUrl() . '/health';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 5,
+        CURLOPT_CONNECTTIMEOUT => 3
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return $httpCode === 200;
+}
+

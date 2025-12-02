@@ -17,7 +17,7 @@ require_once __DIR__ . '/../db_functions.php';
 header('Content-Type: application/json');
 
 // 로그인 확인
-if (!isAuthenticated()) {
+if (!isLoggedIn()) {
     echo json_encode(['success' => false, 'error' => '로그인이 필요합니다.']);
     exit;
 }
@@ -360,6 +360,69 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => '수정 실패']);
         }
         $stmt->close();
+        break;
+
+    // 에이전트 삭제 (Admin만)
+    case 'delete_agent':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+        $agentId = $_POST['agent_id'] ?? '';
+        if (empty($agentId)) {
+            echo json_encode(['success' => false, 'error' => 'agent_id 필요']);
+            exit;
+        }
+
+        // 관련 데이터도 삭제
+        $conn->query("DELETE FROM agent_tag_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+        $conn->query("DELETE FROM agent_group_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+        $conn->query("DELETE FROM agent_data WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+        $conn->query("DELETE FROM agent_commands WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+
+        $stmt = $conn->prepare("DELETE FROM agents WHERE agent_id = ?");
+        $stmt->bind_param("s", $agentId);
+        if ($stmt->execute()) {
+            auditLog($conn, 'DELETE_AGENT', 'agent', null, "에이전트 삭제: $agentId");
+            echo json_encode(['success' => true, 'message' => '에이전트 삭제됨']);
+        } else {
+            echo json_encode(['success' => false, 'error' => '삭제 실패']);
+        }
+        $stmt->close();
+        break;
+
+    // 중복/오프라인 에이전트 일괄 삭제 (Admin만)
+    case 'cleanup_agents':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+
+        // hostname 기준으로 중복된 것 중 오래된 것 삭제 (최신 1개만 유지)
+        $result = $conn->query("
+            SELECT agent_id FROM agents a
+            WHERE EXISTS (
+                SELECT 1 FROM agents b
+                WHERE b.hostname = a.hostname
+                AND b.last_heartbeat > a.last_heartbeat
+            )
+        ");
+
+        $deleted = 0;
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                $agentId = $row['agent_id'];
+                $conn->query("DELETE FROM agent_tag_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+                $conn->query("DELETE FROM agent_group_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+                $conn->query("DELETE FROM agent_data WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+                $conn->query("DELETE FROM agent_commands WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+                $conn->query("DELETE FROM agents WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+                $deleted++;
+            }
+        }
+
+        auditLog($conn, 'CLEANUP_AGENTS', 'agent', null, "중복 에이전트 $deleted 개 삭제");
+        echo json_encode(['success' => true, 'deleted' => $deleted, 'message' => "$deleted 개 중복 에이전트 삭제됨"]);
         break;
 
     default:

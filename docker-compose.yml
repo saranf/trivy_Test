@@ -38,10 +38,12 @@ services:
       # Google Spreadsheet 설정
       - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID:-}
       - GOOGLE_SERVICE_ACCOUNT_KEY=/var/www/html/google-credentials.json
-      # Agent API Token
+      # Agent 설정
       - AGENT_API_TOKEN=${AGENT_API_TOKEN:-default-agent-token-change-me}
+      - TRIVY_AGENT_URL=http://trivy-agent:8888
     depends_on:
       - mysql
+      - trivy-agent
     networks:
       - app-network
 
@@ -60,6 +62,26 @@ services:
     networks:
       - app-network
 
+  # 🤖 Trivy Agent - 로컬 스캐너 에이전트
+  trivy-agent:
+    build: ./trivy-agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Seoul
+      - AGENT_TOKEN=${AGENT_API_TOKEN:-default-agent-token-change-me}
+      - AGENT_ID=local-agent
+      - MODE=api  # api = HTTP API만, push = Central 서버에 푸시, both = 둘 다
+      - API_PORT=8888
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   auto_scan:
     build: ./auto_scan
     volumes:
@@ -69,6 +91,7 @@ services:
       - API_URL=http://nginx:80/auto_scan.php
     depends_on:
       - nginx
+      - trivy-agent
     restart: unless-stopped
     networks:
       - app-network
