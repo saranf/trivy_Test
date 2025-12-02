@@ -10,7 +10,7 @@
 require_once 'auth.php';
 require_once 'db_functions.php';
 
-requireAuth();
+requireLogin();
 if (!isOperator()) {
     header('Location: index.php');
     exit;
