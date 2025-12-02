@@ -99,7 +99,53 @@ trivy-agent/
 
 ## 🚀 설치 방법
 
-### 방법 1: Docker (권장)
+### 방법 1: 로컬 에이전트 (docker-compose에 포함)
+
+현재 docker-compose.yml에 trivy-agent가 포함되어 있습니다.
+웹서버와 같은 네트워크에서 `http://trivy-agent:8888`로 통신합니다.
+
+```bash
+# docker-compose.yml에 이미 포함됨
+# 에이전트 재빌드 시
+docker-compose up -d --build trivy-agent
+```
+
+### 방법 2: Python 간단 에이전트 (원격 서버용)
+
+기존 서버/컨테이너에 Python만 있으면 바로 설치 가능합니다.
+
+```bash
+# 1. 스크립트 다운로드
+curl -O http://YOUR_CENTRAL_SERVER:6987/simple_agent.py
+
+# 2. 실행 (백그라운드)
+nohup python3 simple_agent.py \
+  --url http://YOUR_CENTRAL_SERVER:6987/api/agent.php \
+  --token YOUR_AGENT_TOKEN \
+  --interval 60 &
+
+# 또는 systemd 서비스로 등록
+cat > /etc/systemd/system/trivy-simple-agent.service << EOF
+[Unit]
+Description=Simple Trivy Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/simple_agent.py --url http://CENTRAL:6987/api/agent.php --token TOKEN --interval 60
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable trivy-simple-agent
+systemctl start trivy-simple-agent
+```
+
+### 방법 3: Docker (원격 서버 전용)
 
 ```bash
 # 1. 에이전트 이미지 빌드 (Central Server에서)
@@ -109,30 +155,19 @@ docker build -t trivy-agent:latest .
 # 2. 이미지를 원격 서버로 전송
 docker save trivy-agent:latest | ssh user@remote-server docker load
 
-# 3. 원격 서버에서 실행
+# 3. 원격 서버에서 실행 (MODE=push로 Central에 데이터 전송)
 docker run -d \
   --name trivy-agent \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e CENTRAL_API_URL=http://central-server:6987/api/agent.php \
   -e AGENT_TOKEN=your-secure-token \
-  -e AGENT_ID=server-a-prod \
+  -e MODE=push \
   -e COLLECTORS=trivy,system,docker \
-  -e HEARTBEAT_INTERVAL=60 \
-  -e SCAN_INTERVAL=300 \
   trivy-agent:latest
 ```
 
-### 방법 2: 설치 스크립트
-
-```bash
-curl -sSL http://central-server:6987/install-agent.sh | bash -s -- \
-  --api-url http://central-server:6987/api/agent.php \
-  --token your-secure-token \
-  --collectors trivy,system,docker
-```
-
-### 방법 3: Systemd (네이티브)
+### 방법 4: Systemd (네이티브)
 
 ```bash
 # 1. 스크립트 복사
@@ -420,6 +455,46 @@ docker logs -f trivy-agent
 
 # Systemd
 journalctl -u trivy-agent -f
+```
+
+---
+
+## 🗑️ 에이전트 관리
+
+### 중복 에이전트 정리
+
+에이전트가 재시작될 때 새 agent_id가 생성되어 중복 등록될 수 있습니다.
+
+**웹 UI에서 정리:**
+1. **에이전트 관리** 페이지 접속
+2. 우측 상단 **🗑️ 중복 정리** 버튼 클릭
+3. hostname 기준 중복된 에이전트 중 오래된 것 자동 삭제
+
+**개별 삭제:**
+- 각 에이전트 카드의 **🗑️** 버튼 클릭 (Admin만)
+
+### API로 정리
+
+```bash
+# 중복 정리
+curl -X POST -b "PHPSESSID=YOUR_SESSION" \
+  "http://server:6987/api/agent_admin.php" \
+  -d "action=cleanup_agents"
+
+# 특정 에이전트 삭제
+curl -X POST -b "PHPSESSID=YOUR_SESSION" \
+  "http://server:6987/api/agent_admin.php" \
+  -d "action=delete_agent&agent_id=OLD_AGENT_ID"
+```
+
+### AGENT_ID 고정하기
+
+중복 방지를 위해 환경변수로 고정:
+
+```bash
+docker run -d \
+  -e AGENT_ID=my-server-01 \
+  ...
 ```
 
 ---
