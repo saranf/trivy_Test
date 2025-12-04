@@ -239,7 +239,8 @@ $conn->close();
                 <a href="agents.php" class="btn btn-warning">필터 초기화</a>
                 <?php endif; ?>
                 <?php if (isAdmin() && count($agents) > 0): ?>
-                <button class="btn btn-danger" onclick="cleanupAgents()" style="margin-left:auto;">🗑️ 중복 정리</button>
+                <button class="btn btn-warning" onclick="cleanupAgents()" style="margin-left:auto;">🗑️ 중복 정리</button>
+                <button class="btn btn-danger" onclick="deleteAllAgents()">🗑️ 전체 삭제</button>
                 <?php endif; ?>
             </div>
 
@@ -702,6 +703,27 @@ docker run -d --name trivy-agent \
 
         const formData = new FormData();
         formData.append('action', 'cleanup_agents');
+
+        fetch('api/agent_admin.php', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            })
+            .catch(e => alert('요청 실패: ' + e.message));
+    }
+
+    // 모든 에이전트 삭제
+    function deleteAllAgents() {
+        if (!confirm('⚠️ 경고: 모든 에이전트와 관련 데이터가 삭제됩니다!\n\n이 작업은 되돌릴 수 없습니다.\n정말 삭제하시겠습니까?')) return;
+        if (!confirm('정말로 모든 에이전트를 삭제하시겠습니까? (최종 확인)')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'delete_all_agents');
 
         fetch('api/agent_admin.php', { method: 'POST', body: formData })
             .then(r => r.json())

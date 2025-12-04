@@ -1893,7 +1893,8 @@ function callAgentAPI($endpoint, $data = [], $timeout = 300) {
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
-    curl_close($ch);
+    // PHP 8.0+ 에서 curl_close()는 더 이상 필요 없음 (자동 정리됨)
+    unset($ch);
 
     if ($error) {
         return ['success' => false, 'error' => 'cURL error: ' . $error, 'data' => null];
@@ -2040,7 +2041,7 @@ function checkAgentHealth() {
     ]);
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    unset($ch);
 
     return $httpCode === 200;
 }

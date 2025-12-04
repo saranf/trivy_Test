@@ -425,6 +425,26 @@ switch ($action) {
         echo json_encode(['success' => true, 'deleted' => $deleted, 'message' => "$deleted 개 중복 에이전트 삭제됨"]);
         break;
 
+    // 모든 에이전트 삭제 (Admin만)
+    case 'delete_all_agents':
+        if (!isAdmin()) {
+            echo json_encode(['success' => false, 'error' => 'Admin 권한 필요']);
+            exit;
+        }
+
+        // 에이전트 수 확인
+        $countResult = $conn->query("SELECT COUNT(*) as cnt FROM agents");
+        $count = $countResult ? $countResult->fetch_assoc()['cnt'] : 0;
+
+        // 관련 데이터 먼저 삭제
+        $conn->query("DELETE FROM agent_data");
+        $conn->query("DELETE FROM agent_commands");
+        $conn->query("DELETE FROM agents");
+
+        auditLog($conn, 'DELETE_ALL_AGENTS', 'agent', null, "모든 에이전트 $count 개 삭제");
+        echo json_encode(['success' => true, 'deleted' => $count, 'message' => "모든 에이전트 $count 개 삭제됨"]);
+        break;
+
     default:
         echo json_encode(['success' => false, 'error' => '알 수 없는 액션']);
 }

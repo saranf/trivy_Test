@@ -209,7 +209,7 @@ function getGoogleAccessToken() {
     ]);
 
     $response = json_decode(curl_exec($ch), true);
-    curl_close($ch);
+    unset($ch);
 
     return $response['access_token'] ?? null;
 }
@@ -288,7 +288,7 @@ function appendToSheet($accessToken, $sheetId, $rows) {
 
     $response = json_decode(curl_exec($ch), true);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    unset($ch);
 
     if ($httpCode === 200) {
         return ['success' => true, 'updates' => $response['updates'] ?? null];
