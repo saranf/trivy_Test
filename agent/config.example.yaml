@@ -25,6 +25,12 @@ scan:
   # Cap images per cycle (0 = no limit).
   max_images: 0
 
+push:
+  # mock     → normalized envelope to server_mock  POST /api/v1/findings
+  # mori_raw → raw Trivy report to MORI            POST /ingest/trivy (MORI normalizes)
+  mode: "mock"
+  ingest_path: "/ingest/trivy"   # used only in mori_raw mode
+
 intervals:
   heartbeat_seconds: 60
   scan_seconds: 900

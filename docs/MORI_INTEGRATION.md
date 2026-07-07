@@ -72,12 +72,12 @@ as a **downloadable artifact** for audit evidence. This is richer than a raw
 report and is *not* what `/ingest/trivy` consumes — it targets MORI's evidence
 side (`risk_register` / `evidence_events`), imported separately.
 
-> Current gap: the agent pushes its **normalized envelope** to
-> `/api/v1/findings`, which `server_mock/` implements for dev — MORI does **not**
-> expose that path. To feed real MORI vulnerabilities today, POST the raw Trivy
-> report to `/ingest/trivy` (curl/pipe above); a future agent `push.mode:
-> mori_raw` can do this directly. `server_mock` stays the dev target for the
-> normalized protocol.
+> **Agent push modes** (`push.mode` in `agent/config.yaml`):
+> - `mock` (default) → normalized envelope to `server_mock` `POST /api/v1/findings`.
+> - `mori_raw` → **raw Trivy report** straight to MORI `POST /ingest/trivy`
+>   (Bearer token; MORI normalizes). Register/heartbeat are skipped (MORI has no
+>   such endpoints). This closes the agent→MORI path — verified against
+>   `server_mock` (which now also emulates `/ingest/trivy`).
 
 ### CSOP → MORI rollout (safe, 3 steps)
 

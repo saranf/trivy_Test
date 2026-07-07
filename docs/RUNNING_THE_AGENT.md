@@ -121,10 +121,20 @@ scan:
   severity: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
   max_images: 0                  # 0 = no cap
 
+push:
+  mode: "mock"                   # mock → server_mock /api/v1/findings
+                                 # mori_raw → MORI /ingest/trivy (raw report; MORI normalizes)
+  ingest_path: "/ingest/trivy"
+
 intervals:
   heartbeat_seconds: 60
   scan_seconds: 900
 ```
+
+**Feeding real MORI:** set `push.mode: mori_raw`, point `server.url` at MORI
+(`http://<host>:18000`), and put the `MORI_INGEST_TOKEN` in `server.token` (sent
+as Bearer). Register/heartbeat are skipped in this mode. See
+[MORI_INTEGRATION.md](MORI_INTEGRATION.md).
 
 > Scanning `all_local` on a busy host enumerates **every** local image and can be
 > slow. Pin `scan.targets` to an explicit list (or set `max_images`) for tests.

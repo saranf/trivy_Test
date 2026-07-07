@@ -141,15 +141,24 @@ curl -s http://127.0.0.1:18000/vulnerabilities/risk-summary | jq '.by_level'
 ```
 Pass: `count` / risk levels increased vs the B1 baseline.
 
-### B5. Agent → MORI (the gap) [run]
+### B5. Agent → MORI direct (`push.mode: mori_raw`) [verified against mock]
 
-The agent currently targets the **normalized** `/api/v1/findings` (server_mock),
-which MORI does **not** expose. Two ways to close it:
+The agent can push the **raw Trivy report** straight to MORI's `/ingest/trivy`
+(Bearer token; register/heartbeat skipped). Set in `agent/config.yaml`:
 
-- **Now (bridge):** pipe the agent's scan to MORI —
-  `trivy image -f json <img> | curl -X POST …/ingest/trivy -H "X-MORI-Token: …" --data-binary @-`.
-- **Next (code):** add a `push.mode: mori_raw` to the agent that POSTs the raw
-  report to `/ingest/trivy`. Tracked as follow-up.
+```yaml
+push:
+  mode: "mori_raw"
+  ingest_path: "/ingest/trivy"
+server:
+  url: "http://<mori-host>:18000"
+  token: "<MORI_INGEST_TOKEN>"   # sent as Bearer (MORI also accepts X-MORI-Token)
+```
+
+Verified against `server_mock` (now emulates `/ingest/trivy`):
+`ingested alpine:3.19 to MORI: records=10 entities=10`, and the mock received a
+**raw** report (`Results`/`ArtifactName`, no `schema_version`). Against real MORI
+this needs `MORI_INGEST_TOKEN` set (B2).
 
 ### B6. Zabbix correlation walkthrough [run]
 

@@ -72,6 +72,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._heartbeat(payload)
         if self.path == "/api/v1/findings":
             return self._findings(payload)
+        if self.path == "/ingest/trivy":
+            return self._ingest_trivy(payload)
         return self._json(404, {"error": "unknown endpoint: %s" % self.path})
 
     def do_GET(self):
@@ -129,11 +131,27 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"status": "accepted", "batch_id": batch_id,
                                 "received": s.get("total", len(p["findings"]))})
 
+    def _ingest_trivy(self, p):
+        # Stand-in for MORI's POST /ingest/trivy: accepts a RAW Trivy report
+        # (must have "Results") and mimics its response shape.
+        if not isinstance(p, dict) or "Results" not in p:
+            return self._json(400, {"error": "body must be a Trivy JSON report (with 'Results')"})
+        nvulns = sum(len(r.get("Vulnerabilities") or []) for r in (p.get("Results") or []))
+        STATE["batch_seq"] += 1
+        batch_id = "ingest-%05d" % STATE["batch_seq"]
+        self._persist(batch_id, p)
+        self.log_message("ingest/trivy %s artifact=%s records=%s",
+                         batch_id, p.get("ArtifactName"), nvulns)
+        return self._json(200, {"ok": True, "records_collected": nvulns,
+                                "entities_saved": nvulns, "artifact": p.get("ArtifactName")})
+
     def _persist(self, batch_id, envelope):
         if not STATE["outdir"]:
             return
-        safe_target = (envelope["scan"].get("target", "unknown")
-                       .replace("/", "_").replace(":", "_"))
+        # normalized envelope has scan.target; a raw Trivy report has ArtifactName
+        target = (envelope.get("scan", {}) or {}).get("target") \
+            or envelope.get("ArtifactName") or "unknown"
+        safe_target = str(target).replace("/", "_").replace(":", "_")
         fname = "%s_%s.json" % (batch_id, safe_target)
         with open(os.path.join(STATE["outdir"], fname), "w", encoding="utf-8") as fh:
             json.dump(envelope, fh, indent=2, ensure_ascii=False)

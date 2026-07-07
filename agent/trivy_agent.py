@@ -362,6 +362,27 @@ def push_findings(client, envelope, dry_run=False):
     return False
 
 
+def push_raw_to_mori(client, ingest_path, image, raw, dry_run=False):
+    """mori_raw mode: POST the RAW Trivy report to MORI's /ingest/trivy.
+
+    MORI normalizes internally. Auth is the Bearer token (MORI also accepts it
+    as X-MORI-Token). See docs/MORI_INTEGRATION.md.
+    """
+    nvulns = sum(len(r.get("Vulnerabilities") or []) for r in (raw.get("Results") or []))
+    if dry_run:
+        log("INFO", "[dry-run] would POST raw report for %s (%d vulns) to %s"
+            % (image, nvulns, ingest_path))
+        return True
+    status, resp = client.post(ingest_path, raw)
+    if status in (200, 201, 202):
+        log("INFO", "ingested %s to MORI: records=%s entities=%s"
+            % (raw.get("ArtifactName", image), resp.get("records_collected", "?"),
+               resp.get("entities_saved", "?")))
+        return True
+    log("ERROR", "MORI ingest failed (%s): %s" % (status, resp.get("error", resp)))
+    return False
+
+
 def run_scan_cycle(client, cfg, agent_id, hostname, dry_run=False):
     scan_cfg = cfg["scan"]
     severity = scan_cfg.get("severity") or ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
@@ -379,16 +400,24 @@ def run_scan_cycle(client, cfg, agent_id, hostname, dry_run=False):
         log("INFO", "no images to scan")
         return
 
+    push_cfg = cfg.get("push", {}) or {}
+    mode = push_cfg.get("mode", "mock")
+    ingest_path = push_cfg.get("ingest_path", "/ingest/trivy")
+
     sver = trivy_version()
-    log("INFO", "scan cycle: %d image(s), trivy %s" % (len(images), sver))
+    log("INFO", "scan cycle: %d image(s), trivy %s, push=%s" % (len(images), sver, mode))
     for image in images:
         started = now_iso()
         raw = scan_image(image, severity)
         completed = now_iso()
         if raw is None:
             continue
-        envelope = normalize(image, raw, agent_id, hostname, sver, started, completed)
-        push_findings(client, envelope, dry_run=dry_run)
+        if mode == "mori_raw":
+            # ship the raw Trivy report straight to MORI; MORI normalizes
+            push_raw_to_mori(client, ingest_path, image, raw, dry_run=dry_run)
+        else:
+            envelope = normalize(image, raw, agent_id, hostname, sver, started, completed)
+            push_findings(client, envelope, dry_run=dry_run)
 
 
 def main():
@@ -415,27 +444,36 @@ def main():
     agent_id = resolve_agent_id(cfg, hostname)
     client = ApiClient(base_url, server.get("token", ""), bool(server.get("verify_tls", True)))
 
-    if not register(client, agent_id, hostname):
-        # keep the agent resilient: a loop retries, one-shot modes give up
-        if args.once or args.register_only:
-            return 1
+    # register/heartbeat only exist in the mock/central protocol; MORI's
+    # /ingest/trivy has neither, so skip them in mori_raw mode.
+    mode = (cfg.get("push", {}) or {}).get("mode", "mock")
+    uses_registry = (mode != "mori_raw")
+
+    if uses_registry:
+        if not register(client, agent_id, hostname):
+            if args.once or args.register_only:
+                return 1
+    elif args.register_only:
+        log("ERROR", "--register-only not supported in mori_raw mode (no registry)")
+        return 2
     if args.register_only:
         return 0
 
     if args.once:
-        heartbeat(client, agent_id)
+        if uses_registry:
+            heartbeat(client, agent_id)
         run_scan_cycle(client, cfg, agent_id, hostname, dry_run=args.dry_run)
         return 0
 
     hb_interval = int(cfg["intervals"].get("heartbeat_seconds", 60))
     scan_interval = int(cfg["intervals"].get("scan_seconds", 900))
-    log("INFO", "loop: heartbeat=%ss scan=%ss" % (hb_interval, scan_interval))
+    log("INFO", "loop: heartbeat=%ss scan=%ss push=%s" % (hb_interval, scan_interval, mode))
 
     last_scan = 0.0
     registered = True
     while True:
         try:
-            if not heartbeat(client, agent_id) and not registered:
+            if uses_registry and not heartbeat(client, agent_id) and not registered:
                 registered = register(client, agent_id, hostname)
             now = time.monotonic()
             if now - last_scan >= scan_interval:
