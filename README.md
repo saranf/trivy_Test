@@ -115,6 +115,9 @@ docker run --rm \
 The image bundles Trivy + docker-cli on the official `aquasec/trivy` base. The
 socket mount lets it enumerate/scan host images; the agent only reads through it.
 
+Full run guide (native / container / systemd, flags, config, troubleshooting):
+**[docs/RUNNING_THE_AGENT.md](docs/RUNNING_THE_AGENT.md)**
+
 ---
 
 ## Roadmap
@@ -146,11 +149,19 @@ To keep the portfolio focused, this lab explicitly avoids:
 
 ---
 
-## Background — archived CSOP prototype
+## CSOP Legacy UI Sandbox
 
 An earlier iteration of this repo grew into a full **Container Security Operations Platform**: a PHP dashboard, MySQL, RBAC, agent fleet management, Slack/email/Google-Sheets alerting, Gemini AI analysis, and a Prometheus/Grafana/Loki monitoring stack — all via `docker-compose`.
 
-That code still lives in this repository (`webserver/`, `auto_scan/`, `grafana/`, `loki/`, `prometheus/`, `promtail/`, `falco/`) and remains useful as reference, but **it is not the direction going forward**. The project is being scoped down to the agent + integration lab described above.
+That code is **not thrown away** — it's kept as an **experimental UI sandbox** for prototyping MORI-SOC features (scan diff, finding lifecycle, remediation drafts, evidence export) before the stable ones move into MORI.
 
+> CSOP Legacy UI is retained as a sandbox for testing Trivy scan diff, remediation workflow, and evidence export before integrating stable features into MORI-SOC. It is **not** the product direction and is **not** production-ready. New production-oriented work lives in `agent/`, `server_mock/`, and `docs/`.
+
+**Positioning: MORI-SOC is the product · `trivy_Test` is the lab · CSOP is the UI sandbox.**
+
+Legacy CSOP sandbox directories (retained for UI prototyping and historical reference):
+`webserver/` · `auto_scan/` · `grafana/` · `loki/` · `prometheus/` · `promtail/` · `falco/`
+
+- **What may be prototyped here, and what may not:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
 - Prior platform reference: [AGENT_GUIDE.md](AGENT_GUIDE.md) · [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md) · [docs/SYSTEM_GUIDE.md](docs/SYSTEM_GUIDE.md)
 - The existing shell/Python agent this lab builds on: [trivy-agent/](trivy-agent/)
