@@ -36,14 +36,19 @@ Positioning: **MORI-SOC is the product. `trivy_Test` is the lab. CSOP is the UI 
 
 ## Priority order
 
-1. This scope doc
+1. This scope doc ✅
 2. Keep/clean the **Scan Run History** screen in the CSOP UI
-3. **Trivy Scan Diff** feature
-4. Diff → **CSV export**
-5. Build the **MORI import envelope**
-6. Wire to MORI `/api/v1/findings` (or an import adapter)
-7. Zabbix-triggered scenario: a host problem in Zabbix → view that host's Trivy
+3. **Trivy Scan Diff V2** feature ✅ — `csop_scan_diff.php` + `calculateScanDiffV2`
+4. Diff → **CSV export** ✅ — `api/scan_diff_export.php?format=csv`
+5. Build the **MORI evidence envelope** ✅ — `buildMoriEvidenceEnvelope` (`mori.trivy.findings.v1`)
+6. Wire to MORI — **raw report → `POST /ingest/trivy`** (MORI normalizes; see
+   [MORI_INTEGRATION.md](MORI_INTEGRATION.md)). Not `/api/v1/findings` (that's the
+   server_mock dev protocol).
+7. Finding **lifecycle** states (next) — `open/reviewing/mitigated/accepted_risk/…`
+8. Zabbix-triggered scenario: a host problem in Zabbix → view that host's Trivy
    scan/diff and reflect risk/evidence in MORI
+
+Test plan for all of the above: [TEST_SCENARIOS.md](TEST_SCENARIOS.md).
 
 ---
 

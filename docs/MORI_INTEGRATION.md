@@ -1,7 +1,7 @@
 # MORI-SOC Integration
 
-How Trivy Agent findings become risk and audit evidence inside MORI-SOC, and
-where AI fits. The dividing line is deliberate:
+How Trivy findings become risk and audit evidence inside MORI-SOC, and where AI
+fits. The dividing line is deliberate:
 
 > **The agent is lightweight and deterministic. AI-assisted remediation runs
 > centrally after findings are normalized and stored.**
@@ -10,44 +10,117 @@ where AI fits. The dividing line is deliberate:
 
 ## Responsibility split
 
-| Trivy Agent (edge) | MORI-SOC (central) |
+| Trivy Agent / CSOP (edge) | MORI-SOC (central) |
 |---|---|
-| Enumerate local images | Ingest & validate envelopes |
-| Run `trivy image` | Deduplicate findings by `id` across scans/assets |
-| Normalize to schema `1.0` | Map target → asset & criticality |
-| Push envelope | Compute risk score |
-| Heartbeat | Generate AI remediation draft |
-| — | Store as immutable audit evidence |
+| Enumerate images, run `trivy` | Ingest & normalize Trivy reports |
+| Ship the raw report / diff export | Deduplicate, map assets & criticality |
+| Prototype diff & lifecycle in CSOP | Compute risk score |
+| — | Generate AI remediation draft |
+| — | Store append-only audit evidence |
 | — | Human decision: accept / mitigate / exception |
-
-The agent carries no policy, no asset inventory, and no secrets beyond its own
-push token. Everything that requires context or judgement is central.
 
 ---
 
-## Ingestion pipeline (central side)
+## Real MORI API (as of MORI SOC API v0.2.0)
 
-```
-POST /api/v1/findings
-      │
-      ▼
-1. Validate envelope (schema_version, required fields)
-2. Dedup: upsert each finding by id = vuln|package|target
-      → NEW vs PERSISTENT vs FIXED (finding absent this scan) vs EXCEPTED
-3. Asset mapping: scan.target + agent_id/hostname → asset record + criticality
-4. Risk scoring: severity × CVSS × asset criticality × exploit signals (e.g. CISA KEV)
-5. AI remediation draft (async, cached per vulnerability_id + package)
-6. Persist as audit evidence (append-only); expose CSV/PDF export
+MORI already exposes the endpoints we integrate against (default `http://<host>:18000`):
+
+### Vulnerability ingest — `POST /ingest/trivy`
+
+**This is the ingest contract.** It takes a **raw Trivy JSON report** (a dict
+with a `Results` key, normally also `ArtifactName`) — *not* our normalized
+envelope. MORI normalizes internally (`TrivyCollector` → `EnvelopeEntityMapper`)
+and loads into PostgreSQL.
+
+- **Auth:** if `MORI_INGEST_TOKEN` is set → `Authorization: Bearer <token>` **or**
+  `X-MORI-Token: <token>`. If unset → a logged-in session is required.
+- **Requires** `MORI_DATABASE_URL` (postgres) or returns `503`.
+- **Body check:** missing `Results` → `400`. Wrong/absent token → `401`.
+- **Returns:** `{ ok, records_collected, entities_saved, artifact }`.
+
+```bash
+trivy image --format json nginx:1.25 > report.json
+curl -X POST http://<host>:18000/ingest/trivy \
+     -H "X-MORI-Token: $MORI_INGEST_TOKEN" \
+     -H "Content-Type: application/json" \
+     --data-binary @report.json
 ```
 
-Steps 2 and 4 are why the agent's `id` and deterministic ordering matter: stable
-keys make dedup and diffing cheap and correct.
+### Read / triage endpoints
+
+| Endpoint | Use |
+|---|---|
+| `GET /trivy/vulnerabilities` | Ingested Trivy findings, by host |
+| `GET /vulnerabilities/risk-summary` | Risk matrix + per-CVE scores/levels |
+| `GET /vulnerabilities/{id}/risk` · `PUT` | Read / set risk assessment |
+| `GET /vulnerabilities/{id}/action` | Recommended action |
+| `PUT /vulnerabilities/{id}/plan` | Remediation plan |
+| `PUT,DELETE /vulnerabilities/{id}/exception` | Risk acceptance |
+| `GET /zabbix/hosts` · `GET /fleet/hosts` · `GET /assets` | Host/asset context for correlation |
+
+---
+
+## Two integration paths (don't conflate them)
+
+**1. Vulnerability ingest** — get CVEs into MORI so it can score & triage.
+Ship the **raw Trivy report** to `POST /ingest/trivy`. The agent or a CSOP job
+can do this. MORI owns normalization.
+
+**2. Evidence export** — the before/after remediation story. CSOP builds a
+**diff-aware** envelope (`mori.trivy.findings.v1`, with `delta_type` per finding)
+as a **downloadable artifact** for audit evidence. This is richer than a raw
+report and is *not* what `/ingest/trivy` consumes — it targets MORI's evidence
+side (`risk_register` / `evidence_events`), imported separately.
+
+> Current gap: the agent pushes its **normalized envelope** to
+> `/api/v1/findings`, which `server_mock/` implements for dev — MORI does **not**
+> expose that path. To feed real MORI vulnerabilities today, POST the raw Trivy
+> report to `/ingest/trivy` (curl/pipe above); a future agent `push.mode:
+> mori_raw` can do this directly. `server_mock` stays the dev target for the
+> normalized protocol.
+
+### CSOP → MORI rollout (safe, 3 steps)
+
+1. **Download** the evidence JSON/CSV from CSOP (`api/scan_diff_export.php`).
+2. **Send** it to `server_mock/` and validate the shape.
+3. **POST** to MORI (`/ingest/trivy` for raw reports; evidence import for the
+   diff envelope).
+
+---
+
+## Diff-aware evidence envelope (`mori.trivy.findings.v1`)
+
+Produced by CSOP Scan Diff V2 (`buildMoriEvidenceEnvelope` →
+`api/scan_diff_export.php?format=json`):
+
+```json
+{
+  "schema_version": "mori.trivy.findings.v1",
+  "source": "trivy-agent",
+  "agent_id": "agent-host-001",
+  "hostname": "agent-host-001",
+  "scan_run_id": "scan-42",
+  "target": "nginx:1.25",
+  "generated_at": "2026-07-07T09:05:12+00:00",
+  "summary": { "new": 2, "fixed": 8, "unchanged": 10,
+               "severity_changed": 1, "version_changed": 1, "reopened": 0,
+               "critical": 1, "high": 4 },
+  "findings": [
+    { "vulnerability_id": "CVE-2026-XXXX", "package_name": "openssl",
+      "installed_version": "1.1.1", "fixed_version": "1.1.1x",
+      "severity": "HIGH", "delta_type": "new" }
+  ]
+}
+```
+
+`delta_type ∈ { new, fixed, unchanged, severity_changed, version_changed, reopened }`.
+Dedupe key is `vulnerability_id | package` — the same composite key the agent
+emits (see [AGENT_PROTOCOL.md](AGENT_PROTOCOL.md)); keying on the CVE alone would
+collapse a CVE that appears in multiple packages.
 
 ---
 
 ## The Zabbix ↔ Trivy ↔ MORI ↔ AI story
-
-The agent is one input in a larger correlation:
 
 ```
 Zabbix        host availability / infra problem   ── raises host as impacted
@@ -57,41 +130,20 @@ AI            remediation draft for the operator to accept / mitigate / except
 ```
 
 Worked example:
-1. Zabbix reports a problem on `host01`.
-2. MORI marks `host01` as a high-criticality asset.
-3. Trivy Agent on `host01` pushes CVEs for its images.
-4. MORI raises the risk score for those findings (criticality-weighted).
-5. AI produces a remediation draft (upgrade path, config change).
-6. Operator decides; the decision + evidence are exported for audit.
-
----
-
-## Mapping envelope → MORI entities
-
-| Envelope field | MORI entity |
-|---|---|
-| `agent_id`, `hostname` | Agent / Host asset |
-| `scan.target` | Scanned artifact (container image) |
-| `finding.id` | Finding primary key (dedup) |
-| `finding.vulnerability_id` | CVE record (join to CISA KEV, NVD) |
-| `finding.severity`, `cvss_score` | Base risk inputs |
-| `scan.started_at/completed_at` | Evidence timestamps (MTTR lifecycle) |
+1. Zabbix reports a problem on `host01` (`GET /zabbix/hosts`).
+2. MORI marks `host01` high-criticality (`GET /assets`).
+3. Trivy scans that host's images; the raw report goes to `/ingest/trivy`.
+4. MORI raises risk (`GET /vulnerabilities/risk-summary`).
+5. AI drafts remediation; operator sets `/vulnerabilities/{id}/plan` or
+   `/exception`.
+6. CSOP diff export provides before/after evidence for the audit report.
 
 ---
 
 ## Local development against the mock
 
-`server_mock/receive_findings.py` implements the same endpoints so the agent can
-be exercised without MORI:
-
-```bash
-# terminal 1 — mock central API
-python3 server_mock/receive_findings.py --port 8080 --token change-me-agent-token
-
-# terminal 2 — one agent cycle against the mock
-MORI_AGENT_TOKEN=change-me-agent-token \
-  python3 agent/trivy_agent.py --config agent/config.yaml --once
-```
-
-Received envelopes land in `server_mock/received/`. The mock only validates and
-stores — it intentionally does none of the triage/risk/AI work above.
+`server_mock/receive_findings.py` implements the **normalized** agent protocol
+(`/api/v1/agents/register`, `/heartbeat`, `/api/v1/findings`) so the agent can be
+exercised without MORI. It validates and stores only — no triage/risk/AI. For a
+**real MORI** round-trip, use `/ingest/trivy` as shown above. End-to-end steps
+are in [TEST_SCENARIOS.md](TEST_SCENARIOS.md).

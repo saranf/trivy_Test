@@ -779,6 +779,204 @@ function calculateScanDiff($conn, $oldScanId, $newScanId) {
     ];
 }
 
+// =====================================================
+// Scan Diff V2 — delta 분류 + MORI evidence export
+// (CSOP Lab Scope: docs/CSOP_LAB_SCOPE.md)
+// =====================================================
+
+// 단일 스캔 메타 조회
+function getScanMeta($conn, $scanId) {
+    $stmt = $conn->prepare("SELECT * FROM scan_history WHERE id = ?");
+    $stmt->bind_param("i", $scanId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: null;
+}
+
+// reopened 판정용: 특정 스캔보다 과거의 같은 이미지 스캔에 존재했던 vulnerability|library 키 집합
+function getImageKeysBeforeScan($conn, $imageName, $beforeScanId) {
+    $keys = [];
+    $stmt = $conn->prepare("
+        SELECT DISTINCT sv.vulnerability, sv.library
+        FROM scan_vulnerabilities sv
+        JOIN scan_history sh ON sv.scan_id = sh.id
+        WHERE sh.image_name = ? AND sh.id < ?
+    ");
+    $stmt->bind_param("si", $imageName, $beforeScanId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($r = $res->fetch_assoc()) {
+        $keys[($r['vulnerability'] ?? '') . '|' . ($r['library'] ?? '')] = true;
+    }
+    $stmt->close();
+    return $keys;
+}
+
+// 두 스캔 비교 V2 — 각 finding에 delta_type 부여
+// delta_type: new | fixed | unchanged | severity_changed | version_changed | reopened
+function calculateScanDiffV2($conn, $oldScanId, $newScanId) {
+    $oldVulns = getScanVulnerabilities($conn, $oldScanId);
+    $newVulns = getScanVulnerabilities($conn, $newScanId);
+
+    $keyOf = function ($v) {
+        return ($v['vulnerability'] ?? '') . '|' . ($v['library'] ?? '');
+    };
+
+    $oldMap = [];
+    foreach ($oldVulns as $v) { $oldMap[$keyOf($v)] = $v; }
+    $newMap = [];
+    foreach ($newVulns as $v) { $newMap[$keyOf($v)] = $v; }
+
+    // reopened: old 스캔보다 과거에 존재했던 키 (같은 이미지)
+    $oldMeta = getScanMeta($conn, $oldScanId);
+    $historyKeys = $oldMeta ? getImageKeysBeforeScan($conn, $oldMeta['image_name'], $oldScanId) : [];
+
+    $rank = ['CRITICAL' => 0, 'HIGH' => 1, 'MEDIUM' => 2, 'LOW' => 3, 'UNKNOWN' => 4];
+    $counts = ['new' => 0, 'fixed' => 0, 'unchanged' => 0,
+               'severity_changed' => 0, 'version_changed' => 0, 'reopened' => 0];
+    $findings = [];
+
+    $mk = function ($v, $delta, $prev) {
+        return [
+            'vulnerability' => $v['vulnerability'] ?? '',
+            'library'       => $v['library'] ?? '',
+            'severity'      => strtoupper($v['severity'] ?? 'UNKNOWN'),
+            'prev_severity' => $prev ? strtoupper($prev['severity'] ?? 'UNKNOWN') : null,
+            'installed_version' => $v['installed_version'] ?? '',
+            'fixed_version' => $v['fixed_version'] ?? '',
+            'title'         => $v['title'] ?? '',
+            'delta_type'    => $delta,
+        ];
+    };
+
+    // 현재 스캔 기준: new / reopened / unchanged / severity_changed / version_changed
+    foreach ($newVulns as $v) {
+        $k = $keyOf($v);
+        if (!isset($oldMap[$k])) {
+            $delta = isset($historyKeys[$k]) ? 'reopened' : 'new';
+            $findings[] = $mk($v, $delta, null);
+        } else {
+            $o = $oldMap[$k];
+            if (strtoupper($o['severity'] ?? '') !== strtoupper($v['severity'] ?? '')) {
+                $delta = 'severity_changed';
+            } elseif (($o['installed_version'] ?? '') !== ($v['installed_version'] ?? '')
+                   || ($o['fixed_version'] ?? '') !== ($v['fixed_version'] ?? '')) {
+                $delta = 'version_changed';
+            } else {
+                $delta = 'unchanged';
+            }
+            $findings[] = $mk($v, $delta, $o);
+        }
+        $counts[$delta]++;
+    }
+
+    // 이전 스캔에만 있던 것 = fixed
+    foreach ($oldVulns as $v) {
+        if (!isset($newMap[$keyOf($v)])) {
+            $findings[] = $mk($v, 'fixed', null);
+            $counts['fixed']++;
+        }
+    }
+
+    // 결정론적 정렬: delta_type, severity, key
+    $deltaOrder = ['new' => 0, 'reopened' => 1, 'severity_changed' => 2,
+                   'version_changed' => 3, 'unchanged' => 4, 'fixed' => 5];
+    usort($findings, function ($a, $b) use ($deltaOrder, $rank) {
+        $d = ($deltaOrder[$a['delta_type']] ?? 9) <=> ($deltaOrder[$b['delta_type']] ?? 9);
+        if ($d !== 0) return $d;
+        $s = ($rank[$a['severity']] ?? 9) <=> ($rank[$b['severity']] ?? 9);
+        if ($s !== 0) return $s;
+        return strcmp($a['vulnerability'] . $a['library'], $b['vulnerability'] . $b['library']);
+    });
+
+    // 현재 스캔의 심각도 요약
+    $sev = ['CRITICAL' => 0, 'HIGH' => 0, 'MEDIUM' => 0, 'LOW' => 0, 'UNKNOWN' => 0];
+    foreach ($newVulns as $v) {
+        $s = strtoupper($v['severity'] ?? 'UNKNOWN');
+        $sev[$s] = ($sev[$s] ?? 0) + 1;
+    }
+
+    return [
+        'old_scan_id' => (int)$oldScanId,
+        'new_scan_id' => (int)$newScanId,
+        'image_name'  => $oldMeta['image_name'] ?? ($newMap ? '' : ''),
+        'findings'    => $findings,
+        'counts'      => $counts,
+        'severity'    => $sev,
+        'total_current' => count($newVulns),
+    ];
+}
+
+// MORI import envelope 생성 (schema: mori.trivy.findings.v1)
+function buildMoriEvidenceEnvelope($conn, $oldScanId, $newScanId) {
+    $diff = calculateScanDiffV2($conn, $oldScanId, $newScanId);
+    $newMeta = getScanMeta($conn, $newScanId);
+
+    $findings = [];
+    foreach ($diff['findings'] as $f) {
+        $findings[] = [
+            'vulnerability_id'  => $f['vulnerability'],
+            'package_name'      => $f['library'],
+            'installed_version' => $f['installed_version'],
+            'fixed_version'     => $f['fixed_version'],
+            'severity'          => $f['severity'],
+            'delta_type'        => $f['delta_type'],
+        ];
+    }
+
+    $c = $diff['counts'];
+    return [
+        'schema_version' => 'mori.trivy.findings.v1',
+        'source'         => 'trivy-agent',
+        'agent_id'       => $newMeta['agent_id'] ?? null,
+        'hostname'       => $newMeta['agent_id'] ?? null,
+        'scan_run_id'    => 'scan-' . (int)$newScanId,
+        'target'         => $diff['image_name'] ?: ($newMeta['image_name'] ?? ''),
+        'generated_at'   => date('c'),
+        'summary'        => [
+            'new'              => $c['new'],
+            'fixed'            => $c['fixed'],
+            'unchanged'        => $c['unchanged'],
+            'severity_changed' => $c['severity_changed'],
+            'version_changed'  => $c['version_changed'],
+            'reopened'         => $c['reopened'],
+            'critical'         => $diff['severity']['CRITICAL'],
+            'high'             => $diff['severity']['HIGH'],
+        ],
+        'findings' => $findings,
+    ];
+}
+
+// Diff evidence CSV 생성
+function buildScanDiffCsv($conn, $oldScanId, $newScanId) {
+    $diff = calculateScanDiffV2($conn, $oldScanId, $newScanId);
+    $image = $diff['image_name'];
+    $now = date('c');
+
+    $out = fopen('php://temp', 'r+');
+    fputcsv($out, ['image', 'package', 'cve', 'delta_type',
+                   'previous_severity', 'current_severity',
+                   'installed_version', 'fixed_version', 'evidence_time'], ',', '"', '\\');
+    foreach ($diff['findings'] as $f) {
+        fputcsv($out, [
+            $image,
+            $f['library'],
+            $f['vulnerability'],
+            $f['delta_type'],
+            $f['prev_severity'] ?? '',
+            $f['severity'],
+            $f['installed_version'],
+            $f['fixed_version'],
+            $now,
+        ], ',', '"', '\\');
+    }
+    rewind($out);
+    $csv = stream_get_contents($out);
+    fclose($out);
+    return $csv;
+}
+
 // 이미지별 스캔 기록 조회
 function getScanHistoryByImage($conn) {
     $result = $conn->query("
