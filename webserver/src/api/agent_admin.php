@@ -375,8 +375,8 @@ switch ($action) {
         }
 
         // 관련 데이터도 삭제
-        $conn->query("DELETE FROM agent_tag_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
-        $conn->query("DELETE FROM agent_group_assignments WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+        $conn->query("DELETE FROM agent_tag_mapping WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
+        $conn->query("DELETE FROM agent_group_mapping WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
         $conn->query("DELETE FROM agent_data WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
         $conn->query("DELETE FROM agent_commands WHERE agent_id = '" . $conn->real_escape_string($agentId) . "'");
 
@@ -437,6 +437,8 @@ switch ($action) {
         $count = $countResult ? $countResult->fetch_assoc()['cnt'] : 0;
 
         // 관련 데이터 먼저 삭제
+        $conn->query("DELETE FROM agent_tag_mapping");
+        $conn->query("DELETE FROM agent_group_mapping");
         $conn->query("DELETE FROM agent_data");
         $conn->query("DELETE FROM agent_commands");
         $conn->query("DELETE FROM agents");

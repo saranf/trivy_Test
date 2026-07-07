@@ -53,7 +53,7 @@ function getDailyScanSummary($conn, $date) {
                 MAX(high_count) as high,
                 MAX(medium_count) as medium,
                 MAX(low_count) as low,
-                MAX(total_vulnerabilities) as total
+                MAX(total_vulns) as total
             FROM scan_history 
             WHERE DATE(scan_date) = ?
             GROUP BY image_name";

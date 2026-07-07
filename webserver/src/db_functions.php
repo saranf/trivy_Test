@@ -731,15 +731,20 @@ function calculateScanDiff($conn, $oldScanId, $newScanId) {
     $oldVulns = getScanVulnerabilities($conn, $oldScanId);
     $newVulns = getScanVulnerabilities($conn, $newScanId);
 
-    // vulnerability ID 기준으로 맵 생성
+    // vulnerability(CVE) + library 조합으로 맵 생성
+    // 동일 CVE가 여러 패키지에 존재할 수 있으므로 라이브러리까지 키에 포함한다
+    $keyOf = function ($v) {
+        return ($v['vulnerability'] ?? '') . '|' . ($v['library'] ?? '');
+    };
+
     $oldMap = [];
     foreach ($oldVulns as $v) {
-        $oldMap[$v['vulnerability']] = $v;
+        $oldMap[$keyOf($v)] = $v;
     }
 
     $newMap = [];
     foreach ($newVulns as $v) {
-        $newMap[$v['vulnerability']] = $v;
+        $newMap[$keyOf($v)] = $v;
     }
 
     $added = [];   // 새로 추가된 취약점
@@ -748,7 +753,7 @@ function calculateScanDiff($conn, $oldScanId, $newScanId) {
 
     // 새로 추가된 취약점 찾기
     foreach ($newVulns as $v) {
-        if (!isset($oldMap[$v['vulnerability']])) {
+        if (!isset($oldMap[$keyOf($v)])) {
             $added[] = $v;
         } else {
             $unchanged[] = $v;
@@ -757,7 +762,7 @@ function calculateScanDiff($conn, $oldScanId, $newScanId) {
 
     // 해결된 취약점 찾기
     foreach ($oldVulns as $v) {
-        if (!isset($newMap[$v['vulnerability']])) {
+        if (!isset($newMap[$keyOf($v)])) {
             $removed[] = $v;
         }
     }
