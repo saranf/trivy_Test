@@ -115,6 +115,9 @@ docker run --rm \
 이미지는 공식 `aquasec/trivy` 베이스에 Trivy + docker-cli를 번들합니다. 소켓
 마운트로 호스트 이미지를 열거·스캔하며, 에이전트는 소켓을 읽기만 합니다.
 
+전체 실행 가이드 (native / container / systemd, 플래그, config, 트러블슈팅):
+**[docs/RUNNING_THE_AGENT.md](docs/RUNNING_THE_AGENT.md)**
+
 ---
 
 ## 로드맵
@@ -146,11 +149,19 @@ MVP는 [agent/](agent/) 에 구현되어 있고, 중앙 API의 로컬 대체는
 
 ---
 
-## 배경 — 아카이브된 CSOP 프로토타입
+## CSOP Legacy UI 샌드박스
 
 이 저장소의 이전 버전은 완전한 **컨테이너 보안 운영 플랫폼(CSOP)** 으로 커졌습니다: PHP 대시보드, MySQL, RBAC, 에이전트 플릿 관리, Slack/이메일/Google Sheets 알림, Gemini AI 분석, Prometheus/Grafana/Loki 모니터링 스택 — 전부 `docker-compose` 로.
 
-그 코드는 여전히 저장소에 남아 있고(`webserver/`, `auto_scan/`, `grafana/`, `loki/`, `prometheus/`, `promtail/`, `falco/`) 참고용으로는 유용하지만, **앞으로의 방향은 아닙니다**. 프로젝트는 위에서 설명한 에이전트 + 연동 실험장으로 범위를 축소합니다.
+그 코드는 **버리지 않습니다** — MORI-SOC 기능(스캔 diff, finding 라이프사이클, remediation 초안, 증적 export)을 MORI에 넣기 전에 UI에서 먼저 실험하는 **샌드박스**로 유지합니다.
 
+> CSOP Legacy UI는 버리지 않고, Trivy scan diff / 조치 상태 / 증적 export를 MORI에 붙이기 전 검증하는 샌드박스로 유지합니다. 이는 **제품 방향이 아니며 프로덕션용도 아닙니다**. 프로덕션 지향 신규 작업은 `agent/`, `server_mock/`, `docs/` 에 있습니다.
+
+**포지션: MORI-SOC가 제품 · `trivy_Test`가 실험실 · CSOP가 UI 샌드박스.**
+
+Legacy CSOP 샌드박스 디렉터리 (UI 프로토타이핑·기록용 보존):
+`webserver/` · `auto_scan/` · `grafana/` · `loki/` · `prometheus/` · `promtail/` · `falco/`
+
+- **여기서 실험해도 되는 것 / 안 되는 것:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
 - 이전 플랫폼 참고: [AGENT_GUIDE.md](AGENT_GUIDE.md) · [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md) · [docs/SYSTEM_GUIDE.md](docs/SYSTEM_GUIDE.md)
 - 이 실험장이 기반으로 삼는 기존 셸/파이썬 에이전트: [trivy-agent/](trivy-agent/)
