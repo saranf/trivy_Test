@@ -48,6 +48,10 @@ services:
       - TRIVY_AGENT_URL=${TRIVY_AGENT_URL:-http://trivy-agent:8888}
       # MORI-SOC API (CSOP Zabbix context / evidence 연동)
       - MORI_API_URL=${MORI_API_URL:-http://host.docker.internal:18000}
+      # 인증: 토큰 우선(X-MORI-Token/Bearer), 없으면 세션 로그인 폴백
+      - MORI_INGEST_TOKEN=${MORI_INGEST_TOKEN:-}
+      - MORI_USER=${MORI_USER:-admin}
+      - MORI_PASSWORD=${MORI_PASSWORD:-}
     depends_on:
       - mysql
     networks:

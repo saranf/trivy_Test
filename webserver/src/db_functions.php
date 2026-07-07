@@ -1,23 +1,67 @@
 <?php
 // MORI-SOC API 호출 헬퍼 (읽기). 실패 시 ['_error'=>..] 반환.
-// MORI_API_URL 기본값은 docker-compose에서 host.docker.internal:18000.
-function moriApiGet($path, $timeout = 6) {
-    $base = rtrim(getenv('MORI_API_URL') ?: 'http://host.docker.internal:18000', '/');
-    $url = $base . $path;
-    $ch = curl_init($url);
+// 인증: MORI_INGEST_TOKEN 있으면 X-MORI-Token/Bearer, 401이면 세션 로그인
+//       (MORI_USER/MORI_PASSWORD, 기본 admin/1234) 폴백. MORI가 토큰이든
+//       세션이든 대응. MORI_API_URL 기본 host.docker.internal:18000.
+function moriBaseUrl() {
+    return rtrim(getenv('MORI_API_URL') ?: 'http://host.docker.internal:18000', '/');
+}
+
+// 세션 로그인 → 쿠키 파일 경로(성공) 또는 null. 요청당 1회 캐시.
+function moriLoginCookie($timeout = 6) {
+    static $cookieFile = null;
+    static $tried = false;
+    if ($tried) return $cookieFile;
+    $tried = true;
+    $user = getenv('MORI_USER') ?: 'admin';
+    $pass = getenv('MORI_PASSWORD') ?: '1234';
+    $cf = tempnam(sys_get_temp_dir(), 'moricookie');
+    $ch = curl_init(moriBaseUrl() . '/auth/login');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode(['username' => $user, 'password' => $pass]),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_COOKIEJAR => $cf,
         CURLOPT_TIMEOUT => $timeout,
-        CURLOPT_HTTPHEADER => ['Accept: application/json'],
     ]);
-    $token = getenv('MORI_INGEST_TOKEN');
-    if ($token) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json', 'X-MORI-Token: ' . $token]);
-    }
-    $body = curl_exec($ch);
+    curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err = curl_error($ch);
     curl_close($ch);
+    if ($code === 200) { $cookieFile = $cf; return $cf; }
+    @unlink($cf);
+    return null;
+}
+
+function moriApiGet($path, $timeout = 6) {
+    $url = moriBaseUrl() . $path;
+    $token = getenv('MORI_INGEST_TOKEN');
+
+    $doReq = function ($useCookie) use ($url, $timeout, $token) {
+        $ch = curl_init($url);
+        $headers = ['Accept: application/json'];
+        if ($token) { $headers[] = 'X-MORI-Token: ' . $token; $headers[] = 'Authorization: Bearer ' . $token; }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_HTTPHEADER => $headers,
+        ]);
+        if ($useCookie) {
+            $cf = moriLoginCookie($timeout);
+            if ($cf) curl_setopt($ch, CURLOPT_COOKIEFILE, $cf);
+        }
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        return [$body, $code, $err];
+    };
+
+    list($body, $code, $err) = $doReq(false);
+    // 401/403이면 세션 로그인 후 재시도
+    if ($code === 401 || $code === 403) {
+        list($body, $code, $err) = $doReq(true);
+    }
     if ($body === false || $code >= 400) {
         return ['_error' => $err ?: ('HTTP ' . $code), '_status' => $code];
     }
@@ -1101,6 +1145,102 @@ function getFindingLifecycleCounts($conn, $imageName) {
     }
     $stmt->close();
     return $counts;
+}
+
+// =====================================================
+// Host ↔ Image 매핑 (CSOP Lab) — Zabbix host와 Trivy 이미지 연결
+// MORI가 ArtifactName에서 host_id를 파생해 실제 host와 안 묶이는 문제를
+// CSOP 쪽 명시적 매핑으로 해결하고, JSON으로 노출해 MORI가 소비 가능.
+// =====================================================
+
+function ensureHostImageMappingTable($conn) {
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS host_image_mapping (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            hostname VARCHAR(191) NOT NULL,
+            image_name VARCHAR(255) NOT NULL,
+            agent_id VARCHAR(64) DEFAULT NULL,
+            zabbix_hostid VARCHAR(64) DEFAULT NULL,
+            created_by VARCHAR(128) DEFAULT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_map (hostname, image_name)
+        )
+    ");
+}
+
+// 전체 매핑 목록 (선택: hostname 필터)
+function getHostImageMappings($conn, $hostname = null) {
+    ensureHostImageMappingTable($conn);
+    $rows = [];
+    if ($hostname !== null) {
+        $stmt = $conn->prepare("SELECT * FROM host_image_mapping WHERE hostname = ? ORDER BY image_name");
+        $stmt->bind_param("s", $hostname);
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM host_image_mapping ORDER BY hostname, image_name");
+    }
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($r = $res->fetch_assoc()) { $rows[] = $r; }
+    $stmt->close();
+    return $rows;
+}
+
+// hostname → [image_name, ...]
+function getImagesForHost($conn, $hostname) {
+    $imgs = [];
+    foreach (getHostImageMappings($conn, $hostname) as $m) { $imgs[] = $m['image_name']; }
+    return $imgs;
+}
+
+function upsertHostImageMapping($conn, $hostname, $image, $agentId = null, $zabbixHostId = null, $by = 'admin') {
+    ensureHostImageMappingTable($conn);
+    if ($hostname === '' || $image === '') return false;
+    $stmt = $conn->prepare("
+        INSERT INTO host_image_mapping (hostname, image_name, agent_id, zabbix_hostid, created_by)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE agent_id=VALUES(agent_id), zabbix_hostid=VALUES(zabbix_hostid)
+    ");
+    $stmt->bind_param("sssss", $hostname, $image, $agentId, $zabbixHostId, $by);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
+function deleteHostImageMapping($conn, $id) {
+    ensureHostImageMappingTable($conn);
+    $id = (int)$id;
+    $stmt = $conn->prepare("DELETE FROM host_image_mapping WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
+// 이미지의 최신 2개 스캔 diff 요약 (Zabbix Context 자동 연결용)
+// 반환: [has_diff, new, fixed, still_open, old_id, new_id, last_scan]
+function getLatestDiffSummaryForImage($conn, $image) {
+    $scans = getRecentScansForImage($conn, $image, 2);
+    if (empty($scans)) {
+        return ['has_diff' => false, 'new' => 0, 'fixed' => 0, 'still_open' => 0,
+                'old_id' => null, 'new_id' => null, 'last_scan' => null];
+    }
+    $newest = $scans[0];
+    $stillOpen = count(getScanVulnerabilities($conn, $newest['id']));
+    if (count($scans) < 2) {
+        return ['has_diff' => false, 'new' => 0, 'fixed' => 0, 'still_open' => $stillOpen,
+                'old_id' => null, 'new_id' => (int)$newest['id'], 'last_scan' => $newest['scan_date']];
+    }
+    $diff = calculateScanDiffV2($conn, $scans[1]['id'], $scans[0]['id']);
+    $c = $diff['counts'];
+    return [
+        'has_diff'   => true,
+        'new'        => $c['new'] + $c['reopened'],
+        'fixed'      => $c['fixed'],
+        'still_open' => $stillOpen,
+        'old_id'     => (int)$scans[1]['id'],
+        'new_id'     => (int)$scans[0]['id'],
+        'last_scan'  => $newest['scan_date'],
+    ];
 }
 
 // 이미지별 스캔 기록 조회

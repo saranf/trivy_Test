@@ -120,6 +120,40 @@ collapse a CVE that appears in multiple packages.
 
 ---
 
+## Host ↔ Image mapping
+
+MORI derives `host_id` from the Trivy `ArtifactName` (e.g. `alpine:3.19` →
+`server-alpine-3.19`), so an image scan is **not** tied to a real Zabbix host —
+which is why host-grouped `GET /trivy/vulnerabilities` can show `count: 0` for
+ingested image findings.
+
+CSOP solves this with an explicit **`host_image_mapping`** table
+(`hostname ↔ image_name`, + optional `agent_id` / `zabbix_hostid`), managed in
+`csop_zabbix_context.php`. For each Zabbix host, mapped images auto-show their
+latest before/after diff (New / Fixed / Still-open) and link into Scan Diff V2.
+
+The mapping is exposed as JSON so **MORI can consume it** instead of (or in
+addition to) ArtifactName derivation:
+
+```
+GET /csop_zabbix_context.php?action=mappings
+[ { "hostname": "web-server-01", "image_name": "nginx:demo",
+    "agent_id": "agent-demo", "zabbix_hostid": "h-web-01" }, ... ]
+```
+
+Two ways to close the host↔image gap (complementary):
+1. **CSOP mapping table** (implemented) — CSOP owns the mapping, exposes JSON.
+2. **Hostname in the ingest payload** (MORI side) — the agent/report carries the
+   real hostname so MORI binds findings to the host directly.
+
+### CSOP → MORI auth
+
+`moriApiGet()` authenticates to MORI: **token first** (`MORI_INGEST_TOKEN` →
+`X-MORI-Token` / `Bearer`), then **session-login fallback**
+(`MORI_USER` / `MORI_PASSWORD` → `POST /auth/login`, cookie reused). So CSOP
+works whether MORI uses token or session auth. Configure via `docker-compose.yml`
+webserver env.
+
 ## The Zabbix ↔ Trivy ↔ MORI ↔ AI story
 
 ```
