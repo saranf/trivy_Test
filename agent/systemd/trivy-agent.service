@@ -1,0 +1,34 @@
+[Unit]
+Description=Trivy Agent Lab for MORI-SOC (lightweight, read-only scanner agent)
+Documentation=https://github.com/saranf/trivy_Test
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Dedicated unprivileged user; must be a member of the docker group to read
+# the socket for image enumeration/scanning.
+User=trivy-agent
+SupplementaryGroups=docker
+ExecStart=/usr/bin/python3 /opt/trivy-agent/trivy_agent.py --config /etc/trivy-agent/config.yaml
+Restart=always
+RestartSec=10
+
+# The token should come from the environment, not the config file on disk.
+Environment=MORI_AGENT_TOKEN=change-me-agent-token
+# Or load it from a root-only file:
+# EnvironmentFile=/etc/trivy-agent/agent.env
+
+# --- Hardening: the agent is read-only and needs no write access to the host ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+# Allow reading only what it needs; everything else is read-only via ProtectSystem=strict.
+
+[Install]
+WantedBy=multi-user.target
