@@ -1,36 +1,44 @@
-# Dockerfile for Nginx + PHP 8
+# Dockerfile for Nginx + PHP 8 — arch-agnostic (amd64 & arm64 / Apple Silicon)
 FROM php:8-fpm
 
-# Install Nginx and dependencies
-RUN apt-get update && apt-get install -y nginx
+# Nginx + tooling deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      nginx wget curl gnupg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install PHP mysqli extension
+# PHP mysqli extension
 RUN docker-php-ext-install mysqli && docker-php-ext-enable mysqli
 
-# Configure Nginx and PHP
+# Configure Nginx and PHP-FPM
 COPY default.conf /etc/nginx/sites-available/default
 COPY www.conf /usr/local/etc/php-fpm.d/www.conf
 
-# Copy application code
+# Application code (also bind-mounted at runtime via docker-compose)
 COPY src/ /var/www/html/
 
-# Install Trivy
-RUN apt-get update && apt-get install -y wget curl gnupg
-RUN wget https://github.com/aquasecurity/trivy/releases/download/v0.29.2/trivy_0.29.2_Linux-64bit.deb
-RUN dpkg -i trivy_0.29.2_Linux-64bit.deb
+# Trivy — official apt repo provides both amd64 and arm64 (no hardcoded .deb URL)
+RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+      | gpg --dearmor -o /usr/share/keyrings/trivy.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+      > /etc/apt/sources.list.d/trivy.list \
+    && apt-get update && apt-get install -y trivy \
+    && rm -rf /var/lib/apt/lists/* \
+    && trivy --version
 
-# Install Docker CLI
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && apt-get install -y docker-ce-cli
+# Docker CLI — architecture derived at build time via dpkg --print-architecture
+RUN install -m 0755 -d /usr/share/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg \
+      | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" \
+      > /etc/apt/sources.list.d/docker.list \
+    && apt-get update && apt-get install -y docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
 
-# Add www-data to docker group (GID 999 matches host docker socket)
-RUN groupadd -g 999 docker && usermod -aG docker www-data
+# Add www-data to a docker group so PHP can use the mounted socket
+RUN groupadd -g 999 docker 2>/dev/null || true; usermod -aG docker www-data || true
 
-# Create cache directory and set permissions
+# Cache dir
 RUN mkdir -p /var/www/.cache && chmod -R 777 /var/www/.cache
 
-# Expose port and start PHP-FPM and Nginx
 EXPOSE 80
 CMD ["sh", "-c", "php-fpm -D && nginx -g 'daemon off;'"]
-
