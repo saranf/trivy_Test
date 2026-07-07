@@ -41,9 +41,10 @@ Positioning: **MORI-SOC is the product. `trivy_Test` is the lab. CSOP is the UI 
 3. **Trivy Scan Diff V2** feature ✅ — `csop_scan_diff.php` + `calculateScanDiffV2`
 4. Diff → **CSV export** ✅ — `api/scan_diff_export.php?format=csv`
 5. Build the **MORI evidence envelope** ✅ — `buildMoriEvidenceEnvelope` (`mori.trivy.findings.v1`)
-6. Wire to MORI — **raw report → `POST /ingest/trivy`** (MORI normalizes; see
-   [MORI_INTEGRATION.md](MORI_INTEGRATION.md)). Not `/api/v1/findings` (that's the
-   server_mock dev protocol).
+6. Wire to MORI ✅ — raw report → agent `mori_raw` `POST /ingest/trivy?hostname=`;
+   diff evidence → CSOP **⬆ MORI로 전송** `POST /ingest/evidence`. Shared
+   `MORI_INGEST_TOKEN` (token → session fallback). See
+   [MORI_INTEGRATION.md](MORI_INTEGRATION.md).
 7. Finding **lifecycle** states ✅ — `csop_finding_lifecycle.php` + `finding_lifecycle`
    table (`open/reviewing/mitigated/accepted_risk/false_positive/fixed/reopened`,
    risk_decision + owner + evidence fields)

@@ -16,6 +16,7 @@ $conn = getDbConnection();
 $old = (int)($_GET['old'] ?? 0);
 $new = (int)($_GET['new'] ?? 0);
 $format = strtolower($_GET['format'] ?? 'json');
+$dest = strtolower($_GET['dest'] ?? 'download');
 
 if (!$conn || !$old || !$new) {
     http_response_code(400);
@@ -25,6 +26,22 @@ if (!$conn || !$old || !$new) {
 }
 
 $stamp = date('Ymd_His');
+
+// dest=mori → push the diff-aware envelope to MORI POST /ingest/evidence
+if ($dest === 'mori') {
+    header('Content-Type: application/json');
+    $envelope = buildMoriEvidenceEnvelope($conn, $old, $new);
+    $resp = moriApiPost('/ingest/evidence', $envelope);
+    $status = $resp['_status'] ?? 0;
+    if ($status >= 200 && $status < 300) {
+        echo json_encode(['success' => true, 'status' => $status,
+                          'sent' => count($envelope['findings']), 'mori' => $resp]);
+    } else {
+        echo json_encode(['success' => false, 'status' => $status,
+                          'error' => $resp['_error'] ?? 'MORI push failed', 'mori' => $resp]);
+    }
+    exit;
+}
 
 if ($format === 'csv') {
     header('Content-Type: text/csv; charset=utf-8');

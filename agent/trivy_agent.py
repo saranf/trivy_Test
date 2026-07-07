@@ -25,6 +25,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -362,18 +363,24 @@ def push_findings(client, envelope, dry_run=False):
     return False
 
 
-def push_raw_to_mori(client, ingest_path, image, raw, dry_run=False):
+def push_raw_to_mori(client, ingest_path, image, raw, hostname=None, dry_run=False):
     """mori_raw mode: POST the RAW Trivy report to MORI's /ingest/trivy.
 
     MORI normalizes internally. Auth is the Bearer token (MORI also accepts it
-    as X-MORI-Token). See docs/MORI_INTEGRATION.md.
+    as X-MORI-Token). If hostname is set it's passed as ?hostname= so MORI binds
+    findings to that host instead of deriving host_id from the ArtifactName.
+    See docs/MORI_INTEGRATION.md.
     """
     nvulns = sum(len(r.get("Vulnerabilities") or []) for r in (raw.get("Results") or []))
+    path = ingest_path
+    if hostname:
+        sep = "&" if "?" in path else "?"
+        path = "%s%shostname=%s" % (path, sep, urllib.parse.quote(hostname))
     if dry_run:
         log("INFO", "[dry-run] would POST raw report for %s (%d vulns) to %s"
-            % (image, nvulns, ingest_path))
+            % (image, nvulns, path))
         return True
-    status, resp = client.post(ingest_path, raw)
+    status, resp = client.post(path, raw)
     if status in (200, 201, 202):
         log("INFO", "ingested %s to MORI: records=%s entities=%s"
             % (raw.get("ArtifactName", image), resp.get("records_collected", "?"),
@@ -403,6 +410,8 @@ def run_scan_cycle(client, cfg, agent_id, hostname, dry_run=False):
     push_cfg = cfg.get("push", {}) or {}
     mode = push_cfg.get("mode", "mock")
     ingest_path = push_cfg.get("ingest_path", "/ingest/trivy")
+    # optional: real host this agent represents (MORI binds findings to it)
+    push_hostname = push_cfg.get("hostname") or None
 
     sver = trivy_version()
     log("INFO", "scan cycle: %d image(s), trivy %s, push=%s" % (len(images), sver, mode))
@@ -414,7 +423,8 @@ def run_scan_cycle(client, cfg, agent_id, hostname, dry_run=False):
             continue
         if mode == "mori_raw":
             # ship the raw Trivy report straight to MORI; MORI normalizes
-            push_raw_to_mori(client, ingest_path, image, raw, dry_run=dry_run)
+            push_raw_to_mori(client, ingest_path, image, raw,
+                             hostname=push_hostname, dry_run=dry_run)
         else:
             envelope = normalize(image, raw, agent_id, hostname, sver, started, completed)
             push_findings(client, envelope, dry_run=dry_run)

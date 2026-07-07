@@ -163,7 +163,7 @@ Legacy CSOP 샌드박스 디렉터리 (UI 프로토타이핑·기록용 보존):
 `webserver/` · `auto_scan/` · `grafana/` · `loki/` · `prometheus/` · `promtail/` · `falco/`
 
 - **여기서 실험해도 되는 것 / 안 되는 것:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
-- **Scan Diff V2 + MORI evidence export** (구현됨): `csop_scan_diff.php` — 조치 전/후 CVE 분류, JSON/CSV 내보내기
+- **Scan Diff V2 + MORI evidence** (구현됨): `csop_scan_diff.php` — 조치 전/후 CVE 분류, JSON/CSV 내보내기 **및 ⬆ MORI `/ingest/evidence` 전송**
 - **Finding Lifecycle** (구현됨): `csop_finding_lifecycle.php` — CVE 상태(open/accepted_risk/…), 조치 결정 + 증적 필드
 - **Zabbix Host Context + Host↔Image 매핑** (구현됨): `csop_zabbix_context.php` — Zabbix host를 Trivy 이미지에 매핑, host별 최신 diff 자동 연결, 매핑 JSON을 MORI에 노출
 - **테스트 계획** (로컬 + MORI 연결): [docs/TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md)

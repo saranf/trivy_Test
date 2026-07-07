@@ -163,7 +163,7 @@ Legacy CSOP sandbox directories (retained for UI prototyping and historical refe
 `webserver/` · `auto_scan/` · `grafana/` · `loki/` · `prometheus/` · `promtail/` · `falco/`
 
 - **What may be prototyped here, and what may not:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
-- **Scan Diff V2 + MORI evidence export** (built): `csop_scan_diff.php` — before/after CVE classification, JSON/CSV export
+- **Scan Diff V2 + MORI evidence** (built): `csop_scan_diff.php` — before/after CVE classification, JSON/CSV export **and ⬆ push to MORI `/ingest/evidence`**
 - **Finding Lifecycle** (built): `csop_finding_lifecycle.php` — CVE state (open/accepted_risk/…), risk decision + evidence fields
 - **Zabbix Host Context + Host↔Image mapping** (built): `csop_zabbix_context.php` — maps Zabbix hosts to Trivy images, auto-links each host to its latest diff; exposes mapping JSON for MORI
 - **Test plan** (local + MORI connection): [docs/TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md)

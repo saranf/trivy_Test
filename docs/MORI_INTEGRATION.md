@@ -38,13 +38,27 @@ and loads into PostgreSQL.
 - **Body check:** missing `Results` → `400`. Wrong/absent token → `401`.
 - **Returns:** `{ ok, records_collected, entities_saved, artifact }`.
 
+- **Host binding:** `?hostname=<host>` (also `X-MORI-Hostname` header or body
+  `hostname`/`host_id`) → MORI binds findings to that host instead of deriving
+  `host_id` from `ArtifactName`. Backward-compatible (omit → old behavior).
+
 ```bash
 trivy image --format json nginx:1.25 > report.json
-curl -X POST http://<host>:18000/ingest/trivy \
+curl -X POST "http://<host>:18000/ingest/trivy?hostname=server-db01" \
      -H "X-MORI-Token: $MORI_INGEST_TOKEN" \
      -H "Content-Type: application/json" \
      --data-binary @report.json
 ```
+
+The agent does this in `push.mode: mori_raw` with `push.hostname` set.
+
+### Evidence ingest — `POST /ingest/evidence`
+
+Accepts the CSOP **diff-aware envelope** (`mori.trivy.findings.v1`, with
+`delta_type`) as flexible JSONB — a single envelope or `{"events":[...]}` batch.
+Same token auth as `/ingest/trivy`. Stored in `ui_evidence_events`.
+`GET /evidence` reads them (admin·security only). CSOP pushes here via
+`api/scan_diff_export.php?dest=mori` (the **⬆ MORI로 전송** button).
 
 ### Read / triage endpoints
 
@@ -66,11 +80,10 @@ curl -X POST http://<host>:18000/ingest/trivy \
 Ship the **raw Trivy report** to `POST /ingest/trivy`. The agent or a CSOP job
 can do this. MORI owns normalization.
 
-**2. Evidence export** — the before/after remediation story. CSOP builds a
+**2. Evidence import** — the before/after remediation story. CSOP builds a
 **diff-aware** envelope (`mori.trivy.findings.v1`, with `delta_type` per finding)
-as a **downloadable artifact** for audit evidence. This is richer than a raw
-report and is *not* what `/ingest/trivy` consumes — it targets MORI's evidence
-side (`risk_register` / `evidence_events`), imported separately.
+and POSTs it to MORI **`POST /ingest/evidence`** (not `/ingest/trivy`, which only
+takes raw reports). It can also still be downloaded (JSON/CSV) for offline audit.
 
 > **Agent push modes** (`push.mode` in `agent/config.yaml`):
 > - `mock` (default) → normalized envelope to `server_mock` `POST /api/v1/findings`.
@@ -79,12 +92,13 @@ side (`risk_register` / `evidence_events`), imported separately.
 >   such endpoints). This closes the agent→MORI path — verified against
 >   `server_mock` (which now also emulates `/ingest/trivy`).
 
-### CSOP → MORI rollout (safe, 3 steps)
+### CSOP → MORI rollout (all wired)
 
-1. **Download** the evidence JSON/CSV from CSOP (`api/scan_diff_export.php`).
-2. **Send** it to `server_mock/` and validate the shape.
-3. **POST** to MORI (`/ingest/trivy` for raw reports; evidence import for the
-   diff envelope).
+1. **Download** evidence JSON/CSV from CSOP (`api/scan_diff_export.php`).
+2. **Validate** against `server_mock` (emulates `/ingest/trivy` + `/ingest/evidence`).
+3. **POST to MORI** — raw reports via agent `mori_raw` → `/ingest/trivy`;
+   diff evidence via CSOP **⬆ MORI로 전송** → `/ingest/evidence`. Auth: the shared
+   `MORI_INGEST_TOKEN` (token → session fallback).
 
 ---
 

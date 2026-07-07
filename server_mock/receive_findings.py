@@ -66,15 +66,18 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"error": "invalid JSON body"})
 
-        if self.path == "/api/v1/agents/register":
+        path = self.path.split("?", 1)[0]   # ignore query (e.g. ?hostname=)
+        if path == "/api/v1/agents/register":
             return self._register(payload)
-        if self.path == "/api/v1/agents/heartbeat":
+        if path == "/api/v1/agents/heartbeat":
             return self._heartbeat(payload)
-        if self.path == "/api/v1/findings":
+        if path == "/api/v1/findings":
             return self._findings(payload)
-        if self.path == "/ingest/trivy":
+        if path == "/ingest/trivy":
             return self._ingest_trivy(payload)
-        return self._json(404, {"error": "unknown endpoint: %s" % self.path})
+        if path == "/ingest/evidence":
+            return self._ingest_evidence(payload)
+        return self._json(404, {"error": "unknown endpoint: %s" % path})
 
     def do_GET(self):
         # tiny read-only introspection for humans/tests
@@ -145,12 +148,28 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "records_collected": nvulns,
                                 "entities_saved": nvulns, "artifact": p.get("ArtifactName")})
 
+    def _ingest_evidence(self, p):
+        # Stand-in for MORI's POST /ingest/evidence: accepts the CSOP diff
+        # envelope (mori.trivy.findings.v1), single or {"events":[...]} batch.
+        events = p.get("events") if isinstance(p, dict) and "events" in p else [p]
+        stored = 0
+        for ev in events:
+            if not isinstance(ev, dict) or "findings" not in ev:
+                return self._json(422, {"error": "evidence envelope must have 'findings'"})
+            STATE["batch_seq"] += 1
+            self._persist("evidence-%05d" % STATE["batch_seq"], ev)
+            stored += 1
+        self.log_message("ingest/evidence stored=%s (findings=%s)",
+                         stored, sum(len(e.get("findings") or []) for e in events))
+        return self._json(200, {"ok": True, "stored": stored})
+
     def _persist(self, batch_id, envelope):
         if not STATE["outdir"]:
             return
-        # normalized envelope has scan.target; a raw Trivy report has ArtifactName
+        # normalized envelope → scan.target; raw Trivy report → ArtifactName;
+        # evidence envelope → top-level target
         target = (envelope.get("scan", {}) or {}).get("target") \
-            or envelope.get("ArtifactName") or "unknown"
+            or envelope.get("target") or envelope.get("ArtifactName") or "unknown"
         safe_target = str(target).replace("/", "_").replace(":", "_")
         fname = "%s_%s.json" % (batch_id, safe_target)
         with open(os.path.join(STATE["outdir"], fname), "w", encoding="utf-8") as fh:

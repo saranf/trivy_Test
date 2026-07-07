@@ -30,6 +30,9 @@ push:
   # mori_raw → raw Trivy report to MORI            POST /ingest/trivy (MORI normalizes)
   mode: "mock"
   ingest_path: "/ingest/trivy"   # used only in mori_raw mode
+  # optional: the real host this agent represents. In mori_raw mode it's sent as
+  # ?hostname= so MORI binds findings to this host instead of the image name.
+  hostname: ""
 
 intervals:
   heartbeat_seconds: 60

@@ -27,7 +27,6 @@ function moriLoginCookie($timeout = 6) {
     ]);
     curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
     if ($code === 200) { $cookieFile = $cf; return $cf; }
     @unlink($cf);
     return null;
@@ -53,7 +52,6 @@ function moriApiGet($path, $timeout = 6) {
         $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch);
-        curl_close($ch);
         return [$body, $code, $err];
     };
 
@@ -67,6 +65,50 @@ function moriApiGet($path, $timeout = 6) {
     }
     $data = json_decode($body, true);
     return is_array($data) ? $data : ['_error' => 'invalid JSON', '_raw' => $body];
+}
+
+// MORI API POST (JSON). 인증은 moriApiGet과 동일(토큰 우선, 401시 세션 폴백).
+// 반환: ['_status'=>code, ...decoded] 또는 ['_error'=>..].
+function moriApiPost($path, $payload, $timeout = 10) {
+    $url = moriBaseUrl() . $path;
+    $token = getenv('MORI_INGEST_TOKEN');
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    $doReq = function ($useCookie) use ($url, $timeout, $token, $json) {
+        $ch = curl_init($url);
+        $headers = ['Content-Type: application/json', 'Accept: application/json'];
+        if ($token) { $headers[] = 'X-MORI-Token: ' . $token; $headers[] = 'Authorization: Bearer ' . $token; }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $json,
+            CURLOPT_HTTPHEADER => $headers,
+        ]);
+        if ($useCookie) {
+            $cf = moriLoginCookie($timeout);
+            if ($cf) curl_setopt($ch, CURLOPT_COOKIEFILE, $cf);
+        }
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        return [$body, $code, $err];
+    };
+
+    list($body, $code, $err) = $doReq(false);
+    if ($code === 401 || $code === 403) {
+        list($body, $code, $err) = $doReq(true);
+    }
+    if ($body === false) {
+        return ['_error' => $err ?: 'no response', '_status' => $code];
+    }
+    $data = json_decode($body, true);
+    if (!is_array($data)) $data = ['_raw' => $body];
+    $data['_status'] = $code;
+    if ($code >= 400 && !isset($data['_error'])) {
+        $data['_error'] = $data['detail'] ?? ('HTTP ' . $code);
+    }
+    return $data;
 }
 
 // MySQL 연결 설정 (재시도 로직 포함)

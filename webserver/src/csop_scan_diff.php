@@ -194,6 +194,8 @@ $images = $conn ? getScanHistoryByImage($conn) : [];
                 <div>
                     <a class="btn btn-export" href="${exp}&format=json">⬇ MORI Evidence JSON</a>
                     <a class="btn btn-export csv" href="${exp}&format=csv">⬇ CSV</a>
+                    <button class="btn btn-export" style="background:#6f42c1" onclick="pushMori('${exp}')">⬆ MORI로 전송</button>
+                    <span id="mori-msg" class="hint"></span>
                 </div>
             </div>`;
 
@@ -221,6 +223,15 @@ $images = $conn ? getScanHistoryByImage($conn) : [];
             document.getElementById('result').innerHTML = cardsHtml + toolbar + table;
         }
 
+        async function pushMori(exp) {
+            const msg = document.getElementById('mori-msg');
+            msg.textContent = ' 전송 중…'; msg.style.color = '#666';
+            try {
+                const r = await (await fetch(exp + '&dest=mori')).json();
+                if (r.success) { msg.textContent = ` ✓ MORI 전송됨 (${r.sent}건, status ${r.status})`; msg.style.color = '#0f5132'; }
+                else { msg.textContent = ` ✗ 실패: ${r.error || ''} (status ${r.status||'-'})`; msg.style.color = '#dc3545'; }
+            } catch (e) { msg.textContent = ' ✗ 요청 실패'; msg.style.color = '#dc3545'; }
+        }
         function setFilter(f) { activeFilter = f; render(); }
         function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
     </script>
