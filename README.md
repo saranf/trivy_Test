@@ -165,6 +165,7 @@ Legacy CSOP sandbox directories (retained for UI prototyping and historical refe
 - **What may be prototyped here, and what may not:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
 - **Scan Diff V2 + MORI evidence export** (built): `csop_scan_diff.php` — before/after CVE classification, JSON/CSV export
 - **Finding Lifecycle** (built): `csop_finding_lifecycle.php` — CVE state (open/accepted_risk/…), risk decision + evidence fields
+- **Zabbix Host Context** (built): `csop_zabbix_context.php` — correlates MORI `/zabbix/hosts` + risk-summary with CSOP scans
 - **Test plan** (local + MORI connection): [docs/TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md)
 - Prior platform reference: [AGENT_GUIDE.md](AGENT_GUIDE.md) · [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md) · [docs/SYSTEM_GUIDE.md](docs/SYSTEM_GUIDE.md)
 - The existing shell/Python agent this lab builds on: [trivy-agent/](trivy-agent/)

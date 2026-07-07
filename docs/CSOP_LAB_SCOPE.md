@@ -47,8 +47,9 @@ Positioning: **MORI-SOC is the product. `trivy_Test` is the lab. CSOP is the UI 
 7. Finding **lifecycle** states ✅ — `csop_finding_lifecycle.php` + `finding_lifecycle`
    table (`open/reviewing/mitigated/accepted_risk/false_positive/fixed/reopened`,
    risk_decision + owner + evidence fields)
-8. Zabbix-triggered scenario: a host problem in Zabbix → view that host's Trivy
-   scan/diff and reflect risk/evidence in MORI
+8. Zabbix-triggered scenario ✅ (context view) — `csop_zabbix_context.php`
+   pulls MORI `/zabbix/hosts` + `/vulnerabilities/risk-summary` and correlates
+   with CSOP Trivy scans. (Next: explicit host↔image mapping for auto-linking.)
 
 Test plan for all of the above: [TEST_SCENARIOS.md](TEST_SCENARIOS.md).
 

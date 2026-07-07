@@ -165,6 +165,7 @@ Legacy CSOP 샌드박스 디렉터리 (UI 프로토타이핑·기록용 보존):
 - **여기서 실험해도 되는 것 / 안 되는 것:** [docs/CSOP_LAB_SCOPE.md](docs/CSOP_LAB_SCOPE.md)
 - **Scan Diff V2 + MORI evidence export** (구현됨): `csop_scan_diff.php` — 조치 전/후 CVE 분류, JSON/CSV 내보내기
 - **Finding Lifecycle** (구현됨): `csop_finding_lifecycle.php` — CVE 상태(open/accepted_risk/…), 조치 결정 + 증적 필드
+- **Zabbix Host Context** (구현됨): `csop_zabbix_context.php` — MORI `/zabbix/hosts` + risk-summary와 CSOP 스캔 상관
 - **테스트 계획** (로컬 + MORI 연결): [docs/TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md)
 - 이전 플랫폼 참고: [AGENT_GUIDE.md](AGENT_GUIDE.md) · [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md) · [docs/SYSTEM_GUIDE.md](docs/SYSTEM_GUIDE.md)
 - 이 실험장이 기반으로 삼는 기존 셸/파이썬 에이전트: [trivy-agent/](trivy-agent/)

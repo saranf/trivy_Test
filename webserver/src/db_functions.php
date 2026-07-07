@@ -1,4 +1,30 @@
 <?php
+// MORI-SOC API 호출 헬퍼 (읽기). 실패 시 ['_error'=>..] 반환.
+// MORI_API_URL 기본값은 docker-compose에서 host.docker.internal:18000.
+function moriApiGet($path, $timeout = 6) {
+    $base = rtrim(getenv('MORI_API_URL') ?: 'http://host.docker.internal:18000', '/');
+    $url = $base . $path;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+    ]);
+    $token = getenv('MORI_INGEST_TOKEN');
+    if ($token) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json', 'X-MORI-Token: ' . $token]);
+    }
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($body === false || $code >= 400) {
+        return ['_error' => $err ?: ('HTTP ' . $code), '_status' => $code];
+    }
+    $data = json_decode($body, true);
+    return is_array($data) ? $data : ['_error' => 'invalid JSON', '_raw' => $body];
+}
+
 // MySQL 연결 설정 (재시도 로직 포함)
 function getDbConnection($maxRetries = 5, $retryDelay = 3) {
     $host = "mysql";  // Docker 서비스 이름
