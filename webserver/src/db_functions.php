@@ -977,6 +977,106 @@ function buildScanDiffCsv($conn, $oldScanId, $newScanId) {
     return $csv;
 }
 
+// =====================================================
+// Finding Lifecycle — CVE 상태 관리 (CSOP Lab sandbox)
+// states: open, reviewing, mitigated, accepted_risk, false_positive, fixed, reopened
+// (docs/CSOP_LAB_SCOPE.md — MORI Risk Register로 이관 예정 모델)
+// =====================================================
+
+function FINDING_LIFECYCLE_STATES() {
+    return ['open', 'reviewing', 'mitigated', 'accepted_risk', 'false_positive', 'fixed', 'reopened'];
+}
+
+function ensureFindingLifecycleTable($conn) {
+    $conn->query("
+        CREATE TABLE IF NOT EXISTS finding_lifecycle (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            image_name VARCHAR(255) NOT NULL,
+            vulnerability_id VARCHAR(255) NOT NULL,
+            package_name VARCHAR(500) NOT NULL,
+            state VARCHAR(32) NOT NULL DEFAULT 'open',
+            risk_decision VARCHAR(20) DEFAULT NULL,
+            owner VARCHAR(128) DEFAULT NULL,
+            decision_reason TEXT,
+            due_date DATE DEFAULT NULL,
+            review_date DATE DEFAULT NULL,
+            evidence_note TEXT,
+            updated_by VARCHAR(128) DEFAULT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_finding (image_name(191), vulnerability_id(120), package_name(191))
+        )
+    ");
+}
+
+// 이미지의 lifecycle 상태 맵 (key: vulnerability|package)
+function getFindingLifecycle($conn, $imageName) {
+    ensureFindingLifecycleTable($conn);
+    $map = [];
+    $stmt = $conn->prepare("SELECT * FROM finding_lifecycle WHERE image_name = ?");
+    $stmt->bind_param("s", $imageName);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($r = $res->fetch_assoc()) {
+        $map[$r['vulnerability_id'] . '|' . $r['package_name']] = $r;
+    }
+    $stmt->close();
+    return $map;
+}
+
+// lifecycle 상태 upsert. 유효하지 않은 state면 false.
+function upsertFindingLifecycle($conn, $d, $updatedBy = 'admin') {
+    ensureFindingLifecycleTable($conn);
+    $state = $d['state'] ?? 'open';
+    if (!in_array($state, FINDING_LIFECYCLE_STATES(), true)) {
+        return false;
+    }
+    $image = $d['image_name'] ?? '';
+    $vuln  = $d['vulnerability_id'] ?? '';
+    $pkg   = $d['package_name'] ?? '';
+    if ($image === '' || $vuln === '' || $pkg === '') {
+        return false;
+    }
+    $decision = $d['risk_decision'] ?? null;
+    $owner    = $d['owner'] ?? null;
+    $reason   = $d['decision_reason'] ?? null;
+    $due      = !empty($d['due_date']) ? $d['due_date'] : null;
+    $review   = !empty($d['review_date']) ? $d['review_date'] : null;
+    $note     = $d['evidence_note'] ?? null;
+
+    $stmt = $conn->prepare("
+        INSERT INTO finding_lifecycle
+            (image_name, vulnerability_id, package_name, state, risk_decision,
+             owner, decision_reason, due_date, review_date, evidence_note, updated_by, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            state=VALUES(state), risk_decision=VALUES(risk_decision), owner=VALUES(owner),
+            decision_reason=VALUES(decision_reason), due_date=VALUES(due_date),
+            review_date=VALUES(review_date), evidence_note=VALUES(evidence_note),
+            updated_by=VALUES(updated_by), updated_at=NOW()
+    ");
+    $stmt->bind_param("sssssssssss", $image, $vuln, $pkg, $state, $decision,
+                      $owner, $reason, $due, $review, $note, $updatedBy);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
+// 이미지별 상태 카운트
+function getFindingLifecycleCounts($conn, $imageName) {
+    ensureFindingLifecycleTable($conn);
+    $counts = array_fill_keys(FINDING_LIFECYCLE_STATES(), 0);
+    $stmt = $conn->prepare("SELECT state, COUNT(*) c FROM finding_lifecycle WHERE image_name = ? GROUP BY state");
+    $stmt->bind_param("s", $imageName);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($r = $res->fetch_assoc()) {
+        $counts[$r['state']] = (int)$r['c'];
+    }
+    $stmt->close();
+    return $counts;
+}
+
 // 이미지별 스캔 기록 조회
 function getScanHistoryByImage($conn) {
     $result = $conn->query("

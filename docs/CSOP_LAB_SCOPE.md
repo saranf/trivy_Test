@@ -44,7 +44,9 @@ Positioning: **MORI-SOC is the product. `trivy_Test` is the lab. CSOP is the UI 
 6. Wire to MORI — **raw report → `POST /ingest/trivy`** (MORI normalizes; see
    [MORI_INTEGRATION.md](MORI_INTEGRATION.md)). Not `/api/v1/findings` (that's the
    server_mock dev protocol).
-7. Finding **lifecycle** states (next) — `open/reviewing/mitigated/accepted_risk/…`
+7. Finding **lifecycle** states ✅ — `csop_finding_lifecycle.php` + `finding_lifecycle`
+   table (`open/reviewing/mitigated/accepted_risk/false_positive/fixed/reopened`,
+   risk_decision + owner + evidence fields)
 8. Zabbix-triggered scenario: a host problem in Zabbix → view that host's Trivy
    scan/diff and reflect risk/evidence in MORI
 
