@@ -98,6 +98,23 @@ MORI_AGENT_TOKEN=change-me-agent-token \
 Received envelopes are written to `server_mock/received/`. Use `--dry-run` to
 print normalized envelopes without pushing.
 
+### As a container
+
+```bash
+docker build -t trivy-agent-lab agent/
+
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD/agent/config.yaml":/opt/agent/config.yaml:ro \
+  --add-host host.docker.internal:host-gateway \
+  -e MORI_SERVER_URL=http://host.docker.internal:8080 \
+  -e MORI_AGENT_TOKEN=change-me-agent-token \
+  trivy-agent-lab --once
+```
+
+The image bundles Trivy + docker-cli on the official `aquasec/trivy` base. The
+socket mount lets it enumerate/scan host images; the agent only reads through it.
+
 ---
 
 ## Roadmap

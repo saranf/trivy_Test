@@ -98,6 +98,23 @@ MORI_AGENT_TOKEN=change-me-agent-token \
 수신된 envelope은 `server_mock/received/` 에 저장됩니다. `--dry-run` 을 쓰면
 push 없이 정규화된 envelope을 출력만 합니다.
 
+### 컨테이너로 실행
+
+```bash
+docker build -t trivy-agent-lab agent/
+
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD/agent/config.yaml":/opt/agent/config.yaml:ro \
+  --add-host host.docker.internal:host-gateway \
+  -e MORI_SERVER_URL=http://host.docker.internal:8080 \
+  -e MORI_AGENT_TOKEN=change-me-agent-token \
+  trivy-agent-lab --once
+```
+
+이미지는 공식 `aquasec/trivy` 베이스에 Trivy + docker-cli를 번들합니다. 소켓
+마운트로 호스트 이미지를 열거·스캔하며, 에이전트는 소켓을 읽기만 합니다.
+
 ---
 
 ## 로드맵
