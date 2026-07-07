@@ -1,0 +1,30 @@
+# Trivy Agent Lab for MORI-SOC — example configuration
+# Copy to config.yaml and edit. Secrets can also be supplied via env vars
+# (MORI_SERVER_URL, MORI_AGENT_TOKEN, MORI_AGENT_ID) which override this file.
+
+server:
+  # Central security-operations API. In local dev, point at server_mock.
+  url: "http://localhost:8080"
+  # Bearer token the agent presents to the central API.
+  # Prefer the MORI_AGENT_TOKEN env var over committing a real token here.
+  token: "change-me-agent-token"
+  verify_tls: true
+
+agent:
+  # Stable unique id. Leave empty to derive "agent-<hostname>".
+  id: ""
+  labels:
+    env: "lab"
+    team: "mori-soc"
+
+scan:
+  # "all_local" enumerates local docker images, or give an explicit list:
+  #   targets: ["nginx:1.25", "redis:7"]
+  targets: "all_local"
+  severity: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+  # Cap images per cycle (0 = no limit).
+  max_images: 0
+
+intervals:
+  heartbeat_seconds: 60
+  scan_seconds: 900

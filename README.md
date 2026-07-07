@@ -66,12 +66,12 @@ The forward work is deliberately small:
 
 ---
 
-## Target structure (planned)
+## Structure
 
 ```
 trivy_Test/
 ├── agent/
-│   ├── trivy_agent.py
+│   ├── trivy_agent.py             # the agent: scan → normalize → push (stdlib only)
 │   ├── config.example.yaml
 │   └── systemd/trivy-agent.service
 ├── server_mock/
@@ -83,16 +83,35 @@ trivy_Test/
 └── README.md
 ```
 
+## Try it locally
+
+```bash
+# terminal 1 — mock central API (stands in for MORI-SOC)
+python3 server_mock/receive_findings.py --port 8080 --token change-me-agent-token
+
+# terminal 2 — one agent cycle (needs docker + trivy on PATH)
+cp agent/config.example.yaml agent/config.yaml
+MORI_AGENT_TOKEN=change-me-agent-token \
+  python3 agent/trivy_agent.py --config agent/config.yaml --once
+```
+
+Received envelopes are written to `server_mock/received/`. Use `--dry-run` to
+print normalized envelopes without pushing.
+
 ---
 
 ## Roadmap
 
-| Week | Goal |
-|---|---|
-| 1 | Reposition README: *archived CSOP → MORI Trivy Agent Lab* ✅ |
-| 2 | Agent registration + heartbeat |
-| 3 | `trivy image` scan + normalized JSON push |
-| 4 | MORI API integration docs |
+| Week | Goal | |
+|---|---|---|
+| 1 | Reposition README: *archived CSOP → MORI Trivy Agent Lab* | ✅ |
+| 2 | Agent registration + heartbeat | ✅ |
+| 3 | `trivy image` scan + normalized JSON push | ✅ |
+| 4 | MORI API integration docs | ✅ |
+
+The MVP is implemented in [agent/](agent/), with a local stand-in for the
+central API in [server_mock/](server_mock/) and the wire contract in
+[docs/AGENT_PROTOCOL.md](docs/AGENT_PROTOCOL.md).
 
 Priority note: this lab is **not** the current top priority — the active thread is Zabbix contribution (upstream PR pending). This repo advances slowly and deliberately.
 

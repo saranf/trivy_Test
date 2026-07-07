@@ -66,12 +66,12 @@ AI              → remediation 초안 (중앙에서, 정규화 이후)
 
 ---
 
-## 목표 구조 (계획)
+## 구조
 
 ```
 trivy_Test/
 ├── agent/
-│   ├── trivy_agent.py
+│   ├── trivy_agent.py             # 에이전트: scan → normalize → push (stdlib only)
 │   ├── config.example.yaml
 │   └── systemd/trivy-agent.service
 ├── server_mock/
@@ -83,16 +83,35 @@ trivy_Test/
 └── README.md
 ```
 
+## 로컬에서 실행해보기
+
+```bash
+# 터미널 1 — 목 중앙 API (MORI-SOC 대체)
+python3 server_mock/receive_findings.py --port 8080 --token change-me-agent-token
+
+# 터미널 2 — 에이전트 1회 실행 (docker + trivy 필요)
+cp agent/config.example.yaml agent/config.yaml
+MORI_AGENT_TOKEN=change-me-agent-token \
+  python3 agent/trivy_agent.py --config agent/config.yaml --once
+```
+
+수신된 envelope은 `server_mock/received/` 에 저장됩니다. `--dry-run` 을 쓰면
+push 없이 정규화된 envelope을 출력만 합니다.
+
 ---
 
 ## 로드맵
 
-| 주차 | 목표 |
-|---|---|
-| 1주차 | README 재정의: *아카이브된 CSOP → MORI Trivy Agent Lab* ✅ |
-| 2주차 | 에이전트 등록 + heartbeat |
-| 3주차 | `trivy image` 스캔 + 정규화 JSON push |
-| 4주차 | MORI API 연동 문서 |
+| 주차 | 목표 | |
+|---|---|---|
+| 1주차 | README 재정의: *아카이브된 CSOP → MORI Trivy Agent Lab* | ✅ |
+| 2주차 | 에이전트 등록 + heartbeat | ✅ |
+| 3주차 | `trivy image` 스캔 + 정규화 JSON push | ✅ |
+| 4주차 | MORI API 연동 문서 | ✅ |
+
+MVP는 [agent/](agent/) 에 구현되어 있고, 중앙 API의 로컬 대체는
+[server_mock/](server_mock/), 전송 규약은
+[docs/AGENT_PROTOCOL.md](docs/AGENT_PROTOCOL.md) 에 있습니다.
 
 우선순위 참고: 이 실험장은 **현재 최우선이 아닙니다** — 지금 가장 강한 흐름은 Zabbix 기여(업스트림 PR 대기 중)입니다. 이 저장소는 천천히, 신중하게 진행합니다.
 
