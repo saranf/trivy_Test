@@ -1,0 +1,41 @@
+name: security-review
+# MORI 코드 보안 리뷰 증적 — 매 PR/요청마다 AI 보안 리뷰 → 결과를 MORI로 전송.
+# 준비물(레포 Settings→Secrets): ANTHROPIC_API_KEY, MORI_INGEST_URL (토큰은 OIDC로 대체).
+on:
+  pull_request:
+  workflow_dispatch:            # MORI UI에서 원격 실행(스캔 요청)용
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write               # GitHub OIDC — MORI가 repo·commit·run을 서명 검증(위조 불가)
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: review
+        uses: anthropics/claude-code-security-review@main
+        with:
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: true
+      - name: Push results to MORI
+        if: ${{ always() }}
+        continue-on-error: true   # 증적 전송 실패해도 PR 체크는 막지 않음
+        env:
+          MORI_INGEST_URL: ${{ secrets.MORI_INGEST_URL }}
+          RESULTS_FILE: ${{ steps.review.outputs.results-file }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          [ -z "$MORI_INGEST_URL" ] && { echo "MORI_INGEST_URL 미설정 — 스킵"; exit 0; }
+          [ -f "$RESULTS_FILE" ] || { echo "결과 파일 없음 — 스킵"; exit 0; }
+          # OIDC 토큰(GitHub 서명) 획득 → MORI가 검증 (정적 토큰 불필요)
+          OIDC=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=mori-ingest" | jq -r '.value // empty')
+          curl -fsS -X POST \
+            "${MORI_INGEST_URL%/}/ingest/code-review?repo=${GITHUB_REPOSITORY}&commit=${GITHUB_SHA}&run_id=${GITHUB_RUN_ID}&pr=${PR_NUMBER}" \
+            -H "X-MORI-OIDC: $OIDC" -H "Content-Type: application/json" \
+            --data-binary "@${RESULTS_FILE}"
