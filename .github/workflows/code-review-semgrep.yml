@@ -1,0 +1,48 @@
+# MORI 코드 보안 리뷰 증적 — 무료 Semgrep(SAST)로 기존 코드 전체 스캔 → 결과를 MORI로 전송.
+# 준비물: 이 파일 1개 + 레포 Secret 1개(MORI_INGEST_URL). ANTHROPIC 키 불필요(무료).
+on:
+  workflow_dispatch:            # MORI UI 원격 실행 / 수동 실행
+    inputs:
+      mori_ingest_url:
+        description: "MORI ingest base URL (원격 트리거 시 자동 주입)"
+        required: false
+        default: ""
+  # 정기 베이스라인(월 1회) — 필요하면 주석 해제:
+  # schedule:
+  #   - cron: "0 0 1 * *"
+
+permissions:
+  contents: read
+  id-token: write               # GitHub OIDC — MORI가 repo·commit·run을 서명 검증(위조 불가)
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Semgrep scan (free OSS rules)
+        run: |
+          python3 -m pip install --quiet semgrep
+          semgrep scan --config auto --sarif --output semgrep.sarif . || true
+      - name: Push results to MORI
+        continue-on-error: true
+        env:
+          MORI_INGEST_URL: ${{ github.event.inputs.mori_ingest_url || secrets.MORI_INGEST_URL }}
+          MORI_INGEST_TOKEN: ${{ secrets.MORI_INGEST_TOKEN }}
+        run: |
+          [ -z "$MORI_INGEST_URL" ] && { echo "MORI_INGEST_URL 미설정 — 스킵"; exit 0; }
+          [ -f semgrep.sarif ] || { echo "SARIF 없음 — 스킵"; exit 0; }
+          OIDC=""
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            OIDC=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=mori-ingest" | jq -r '.value // empty')
+          fi
+          HDR=(-H "Content-Type: application/json")
+          [ -n "$MORI_INGEST_TOKEN" ] && HDR+=(-H "Authorization: Bearer ${MORI_INGEST_TOKEN}")
+          [ -n "$OIDC" ] && HDR+=(-H "X-MORI-OIDC: ${OIDC}")
+          curl -fsS -X POST \
+            "${MORI_INGEST_URL%/}/ingest/code-review?repo=${GITHUB_REPOSITORY}&commit=${GITHUB_SHA}&run_id=${GITHUB_RUN_ID}" \
+            "${HDR[@]}" --data-binary "@semgrep.sarif"
