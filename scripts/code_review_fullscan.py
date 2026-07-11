@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 # 소스 코드로 볼 확장자(로직 취약점 리뷰 대상). 문서/락파일/바이너리는 제외.
@@ -28,7 +29,7 @@ SKIP_DIRS = {
     ".next", ".nuxt", "target", "bin", "obj", ".terraform", "migrations", "backups",
 }
 PER_FILE_MAX = 60_000        # 파일당 상한(대형 생성물 제외)
-DEFAULT_TOTAL_MAX = 200_000  # 1회 전송 총량 상한(토큰·비용 통제)
+DEFAULT_TOTAL_MAX = 120_000  # 1회 전송 총량 상한(토큰·비용·400 방지)
 
 _SCHEMA_HINT = (
     'Return ONLY JSON: {"findings":[{"file":"path","line":N,"severity":"HIGH|MEDIUM|LOW",'
@@ -128,8 +129,16 @@ def call_claude(api_key: str, model: str, prompt: str, *, max_tokens: int = 4096
         headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
                  "content-type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310 (fixed host)
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310 (fixed host)
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:  # 400 등 — 실제 사유(모델/길이)를 노출
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", "replace")[:600]
+        except Exception:
+            detail = getattr(exc, "reason", "")
+        raise RuntimeError(f"Anthropic API {exc.code}: {detail}") from exc
     chunks = [c.get("text", "") for c in data.get("content", []) if c.get("type") == "text"]
     return "".join(chunks)
 
@@ -164,10 +173,18 @@ def main() -> int:
         print("스캔할 소스 파일 없음 — 0건으로 기록")
         findings: list[dict] = []
     else:
+        prompt = build_prompt(files)
+        print(f"Claude 호출: 모델={model}, 프롬프트≈{len(prompt):,}자")
         try:
-            findings = parse_findings(call_claude(api_key, model, build_prompt(files)))
+            findings = parse_findings(call_claude(api_key, model, prompt))
         except Exception as exc:
             print(f"Claude 리뷰 실패: {exc}", file=sys.stderr)
+            msg = str(exc).lower()
+            if "model" in msg:
+                print("힌트: CLAUDE_MODEL 을 계정에서 지원하는 모델 id로 지정하세요 "
+                      "(예: claude-sonnet-4-5, 워크플로 env CLAUDE_MODEL).", file=sys.stderr)
+            elif "long" in msg or "max" in msg or "token" in msg:
+                print("힌트: 프롬프트가 큽니다 — DEFAULT_TOTAL_MAX 를 더 낮추세요.", file=sys.stderr)
             return 1
     print(f"findings: {len(findings)}건 (모델 {model})")
     try:
